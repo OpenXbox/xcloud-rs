@@ -13,3 +13,6 @@ serde_json = "1.0.59"
 correlation_vector = { git = "https://github.com/tuxuser/CorrelationVector-Rust.git", branch = "master" }
 uuid = { version = "0.8.1", features = ["v4"] }
 xal = { path = "../xal" }
+webrtc-rs-srtp = { git = "https://github.com/Cicuma/srtp.git", branch = "main" }
+webrtc-rs-stun = "0.1.13"
+webrtc-rs-rtp = "0.1.0"
