@@ -1,2 +1,2 @@
 [workspace]
-members = ["xal", "smartglass", "gamestreaming", "client"]
+members = ["xal", "smartglass", "gamestreaming", "client", "pcap_parser", "teredo"]

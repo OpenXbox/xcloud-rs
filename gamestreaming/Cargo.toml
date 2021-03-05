@@ -7,9 +7,15 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+base64 = "0.13.0"
 reqwest = { version = "0.10", features = ["json"] }
 serde = { version = "1.0.117", features = ["derive"] }
 serde_json = "1.0.59"
-correlation_vector = { git = "https://github.com/tuxuser/CorrelationVector-Rust.git", branch = "master" }
 uuid = { version = "0.8.1", features = ["v4"] }
+pnet = "0.27.2"
+webrtc-rs-stun = "0.1.13"
+webrtc-rs-rtp = "0.1.0"
+webrtc-srtp = { path = "../webrtc-srtp" }
 xal = { path = "../xal" }
+teredo = { path = "../teredo" }
+correlation_vector = { git = "https://github.com/OpenXbox/CorrelationVector-Rust.git", branch = "master" }

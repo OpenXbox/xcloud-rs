@@ -1,0 +1,3 @@
+[submodule "webrtc-srtp"]
+	path = webrtc-srtp
+	url = git@github.com:tuxuser/srtp.git
