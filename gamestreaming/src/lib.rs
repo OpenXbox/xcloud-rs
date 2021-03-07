@@ -1,8 +1,9 @@
-pub extern crate webrtc_rs_stun as stun;
-pub extern crate webrtc_rs_srtp as srtp;
-pub extern crate webrtc_rs_rtp as rtp;
+pub extern crate pnet;
+pub extern crate teredo;
 
+pub mod crypto;
 pub mod models;
+pub mod webrtc;
 
 #[cfg(test)]
 mod tests {
