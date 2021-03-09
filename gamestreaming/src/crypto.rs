@@ -31,19 +31,19 @@ pub struct MsSrtpCryptoContext {
 }
 
 impl MsSrtpCryptoContext {
-    pub fn new(master_key: [u8; 16], master_salt: [u8; 12]) -> Result<Self> {
+    pub fn new(master_key: [u8; 16], master_salt: [u8; 14]) -> Result<Self> {
         Ok(Self {
             crypto_ctx_in: context::Context::new(
                 &master_key,
                 &master_salt,
-                protection_profile::ProtectionProfile::AEADAES128GCM,
+                protection_profile::ProtectionProfile::AEADAES128GCM_MS_SRTP,
                 None,
                 None,
             )?,
             crypto_ctx_out: context::Context::new(
                 &master_key,
                 &master_salt,
-                protection_profile::ProtectionProfile::AEADAES128GCM,
+                protection_profile::ProtectionProfile::AEADAES128GCM_MS_SRTP,
                 None,
                 None,
             )?,
@@ -101,6 +101,6 @@ mod test {
         let decrypted = context.decrypt_rtp(data)
             .expect("Failed to decrypt packet");
         
-        assert_eq!(decrypted.len(), 1354);
+        assert_eq!(decrypted.len(), 1348);
     }
 }
