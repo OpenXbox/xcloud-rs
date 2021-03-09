@@ -19,31 +19,31 @@ use std::convert::TryInto;
 /// the cryptographic context, then uses the SSRC in the packet to decide the per SSRC transform independent
 /// parameters in the cryptographic context.
 
-use webrtc_rs_srtp;
-use webrtc_rs_rtp::header::Header;
+use crate::webrtc::srtp::{protection_profile, context};
+use crate::webrtc::rtp::header::Header;
 
 type Error = Box<dyn std::error::Error>;
 type Result<T> = std::result::Result<T, Error>;
 
 pub struct MsSrtpCryptoContext {
-    crypto_ctx_in: webrtc_rs_srtp::context::Context,
-    crypto_ctx_out: webrtc_rs_srtp::context::Context,
+    crypto_ctx_in: context::Context,
+    crypto_ctx_out: context::Context,
 }
 
 impl MsSrtpCryptoContext {
     pub fn new(master_key: [u8; 16], master_salt: [u8; 12]) -> Result<Self> {
         Ok(Self {
-            crypto_ctx_in: webrtc_rs_srtp::context::Context::new(
+            crypto_ctx_in: context::Context::new(
                 &master_key,
                 &master_salt,
-                webrtc_rs_srtp::protection_profile::ProtectionProfile::AEADAES128GCM,
+                protection_profile::ProtectionProfile::AEADAES128GCM,
                 None,
                 None,
             )?,
-            crypto_ctx_out: webrtc_rs_srtp::context::Context::new(
+            crypto_ctx_out: context::Context::new(
                 &master_key,
                 &master_salt,
-                webrtc_rs_srtp::protection_profile::ProtectionProfile::AEADAES128GCM,
+                protection_profile::ProtectionProfile::AEADAES128GCM,
                 None,
                 None,
             )?,

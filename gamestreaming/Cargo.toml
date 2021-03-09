@@ -11,11 +11,11 @@ base64 = "0.13.0"
 reqwest = { version = "0.10", features = ["json"] }
 serde = { version = "1.0.117", features = ["derive"] }
 serde_json = "1.0.59"
-correlation_vector = { git = "https://github.com/tuxuser/CorrelationVector-Rust.git", branch = "master" }
 uuid = { version = "0.8.1", features = ["v4"] }
-xal = { path = "../xal" }
-teredo = { path = "../teredo" }
 pnet = "0.27.2"
-webrtc-rs-srtp = { git = "https://github.com/Cicuma/srtp.git", branch = "main" }
 webrtc-rs-stun = "0.1.13"
 webrtc-rs-rtp = "0.1.0"
+webrtc-srtp = { path = "../webrtc-srtp" }
+xal = { path = "../xal" }
+teredo = { path = "../teredo" }
+correlation_vector = { git = "https://github.com/OpenXbox/CorrelationVector-Rust.git", branch = "master" }
