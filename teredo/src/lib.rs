@@ -65,11 +65,11 @@ impl<'a> Teredo for ipv6::Ipv6Packet<'a> {
 ///
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub struct TeredoEndpoint {
-    prefix: u32,
-    teredo_server_ipv4: Ipv4Addr,
-    teredo_client_ipv4: Ipv4Addr,
-    flags: u16,
-    udp_port: u16,
+    pub prefix: u32,
+    pub teredo_server_ipv4: Ipv4Addr,
+    pub teredo_client_ipv4: Ipv4Addr,
+    pub flags: u16,
+    pub udp_port: u16,
 }
 
 impl TryFrom<[u8; 16]> for TeredoEndpoint
