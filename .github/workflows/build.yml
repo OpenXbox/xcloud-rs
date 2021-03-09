@@ -12,6 +12,11 @@ jobs:
         with:
           submodules: recursive
 
+      - name: Install dependencies
+        run:
+          - apt update
+          - apt install libpcap-dev
+
       - name: Install toolchain
         uses: actions-rs/toolchain@v1
         with:
