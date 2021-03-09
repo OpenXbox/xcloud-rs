@@ -8,5 +8,6 @@ edition = "2018"
 
 [dependencies]
 gamestreaming = { path = "../gamestreaming" }
+hexdump = "0.1.1"
 pcap = "0.8.1"
 structopt = "0.3.21"

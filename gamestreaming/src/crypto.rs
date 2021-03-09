@@ -82,6 +82,13 @@ impl MsSrtpCryptoContext {
         Ok(self.crypto_ctx_out.encrypt_rtp(plaintext)?)
     }
 
+    pub fn decrypt_rtp_as_host(&mut self, encrypted: &[u8]) -> Result<Vec<u8>> {
+        Ok(self.crypto_ctx_out.decrypt_rtp(encrypted)?)
+    }
+
+    pub fn encrypt_rtp_as_host(&mut self, encrypted: &[u8]) -> Result<Vec<u8>> {
+        Ok(self.crypto_ctx_in.decrypt_rtp(encrypted)?)
+    }
 }
 
 #[cfg(test)]
