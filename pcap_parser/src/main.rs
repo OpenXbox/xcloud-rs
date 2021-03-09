@@ -46,7 +46,36 @@ impl PcapParser{
         if let Some(udp) = UdpPacket::new(packet) {
             let payload = udp.payload();
 
-            if let Some(teredo) = Ipv6Packet::new(payload) {
+            if stun::message::is_message(payload) {
+                let mut stun_msg = stun::message::Message::new();
+                stun_msg.raw = payload.to_vec();
+                if let Ok(_) = stun_msg.decode()
+                {   
+                    println!("STUN Packet: {}", stun_msg);
+                } else {
+                    println!("Malformed STUN packet");
+                }
+            }
+            else if payload[0] == 0x80 {
+                let mut reader = BufReader::new(payload);
+                if let Ok(rtp_packet) = rtp::packet::Packet::unmarshal(&mut reader) {
+                    if rtp_packet.header.version == 2 {
+                        return Ok(payload.to_vec());
+                    }
+                }
+                else {
+                    println!(
+                        "UDP Packet: {}:{} > {}:{}; length: {}",
+                        source.0,
+                        udp.get_source(),
+                        destination.0,
+                        udp.get_destination(),
+                        udp.get_length()
+                    );
+                    hexdump::hexdump(&payload);
+                }
+            }
+            else if let Some(teredo) = Ipv6Packet::new(payload) {
                 if teredo.is_teredo()
                 {
                     let teredo_src: TeredoEndpoint = teredo.get_source().try_into()?;
@@ -62,38 +91,6 @@ impl PcapParser{
                         teredo.payload(),
                         true
                     );
-                }
-            }
-            else if stun::message::is_message(payload) {
-                let mut stun_msg = stun::message::Message::new();
-                stun_msg.raw = payload.to_vec();
-                if let Ok(_) = stun_msg.decode()
-                {
-                    println!("STUN Packet: {}", stun_msg);
-                } else {
-                    println!("Malformed STUN packet");
-                }
-            }
-            else {
-                let mut reader = BufReader::new(payload);
-                if let Ok(rtp_packet) = rtp::packet::Packet::unmarshal(&mut reader) {
-                    if rtp_packet.header.version == 2 &&
-                        rtp_packet.size() == payload.len() {
-
-                        return Ok(payload.to_vec());
-                    }
-                }
-                else {
-                    /*
-                    println!(
-                        "UDP Packet: {}:{} > {}:{}; length: {}",
-                        source.0,
-                        udp.get_source(),
-                        destination.0,
-                        udp.get_destination(),
-                        udp.get_length()
-                    );
-                     */
                 }
             }
         }
