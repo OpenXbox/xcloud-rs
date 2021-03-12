@@ -2,6 +2,10 @@
 use std::{io::BufReader, convert::TryInto};
 use std::path::PathBuf;
 use std::net::IpAddr;
+use std::fs::File;
+use std::io::prelude::*;
+use std::io::BufWriter;
+use std::io::Cursor;
 use structopt::StructOpt;
 use pcap::Capture;
 use gamestreaming::pnet::util::MacAddr;
@@ -12,9 +16,9 @@ use gamestreaming::pnet::packet::udp::UdpPacket;
 use gamestreaming::pnet::packet::Packet;
 use gamestreaming::webrtc::stun;
 use gamestreaming::crypto;
+use gamestreaming::packets;
 use gamestreaming::webrtc::rtp;
 use gamestreaming::teredo::{Teredo, TeredoEndpoint};
-use hexdump;
 
 type Error = Box<dyn std::error::Error>;
 type Result<T> = std::result::Result<T, Error>;
@@ -72,7 +76,6 @@ impl PcapParser{
                         udp.get_destination(),
                         udp.get_length()
                     );
-                    hexdump::hexdump(&payload);
                 }
             }
             else if let Some(teredo) = Ipv6Packet::new(payload) {
@@ -174,6 +177,7 @@ impl PcapParser{
     }
 }
 
+
 #[derive(Debug, StructOpt)]
 #[structopt(name = "XCloud pcap parser", about = "Parses pcap/-ng files for analysis.")]
 struct Opt {
@@ -187,7 +191,10 @@ struct Opt {
 
     /// SRTP Master bytes
     #[structopt(short, long)]
-    srtp_key: Option<String>
+    srtp_key: Option<String>,
+
+    #[structopt(long)]
+    dump_video: Option<PathBuf>,
 }
 
 fn main() {
@@ -211,17 +218,31 @@ fn main() {
         }
     };
 
+    let fhandle = {
+        match opt.dump_video {
+            Some(filepath) => Some(File::create(filepath).expect("Failed to create file for video-dump")),
+            None => None
+        }
+    };
+
+    let mut buf_writer = {
+        match fhandle {
+            Some(handle) => Some(BufWriter::new(handle)),
+            None => None,
+        }
+    };
+
     while let Ok(packet) = cap.next() {
         if let Ok(rtp_response) = parser.handle_packet(&packet.data) {
             let packet = rtp_response.packet;
 
             let decryption_result = {
                 if rtp_response.is_client {
-                    println!("CLIENT -> XBOX");
+                    // println!("CLIENT -> XBOX");
                     crypto_context.decrypt_rtp(&packet)
                 }
                 else {
-                    println!("XBOX -> CLIENT");
+                    // println!("XBOX -> CLIENT");
                     crypto_context.decrypt_rtp_as_host(&packet)
                 }
             };
@@ -229,8 +250,18 @@ fn main() {
             if let Ok(plaintext) = decryption_result {
                 let mut reader = BufReader::new(&plaintext[..]);
                 if let Ok(rtp_packet) = rtp::packet::Packet::unmarshal(&mut reader) {
-                    println!("RTP Header: {:?}", rtp_packet.header);
-                    hexdump::hexdump(&rtp_packet.payload);
+                    packets::parse_rtp_packet(&rtp_packet);
+                    /*
+                    if let Some(ref mut writer) = buf_writer {
+                        if rtp_packet.header.ssrc == 1026 && rtp_packet.payload[0xC] == 0x4 {
+                            let frame = packets::VideoFrame::unpack(&rtp_packet.payload[..20].try_into().unwrap()).expect("Failed to read VideoFrame");
+                            println!("VideoFrame: {:?}", frame);
+                            // writer.write(&vframe).expect("Failed to write");
+
+                            //return;
+                        }
+                    }
+                    */
                 }
             } else {
                 println!("Failed to decrypt RTP");
