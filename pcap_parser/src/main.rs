@@ -7,7 +7,7 @@ use std::io::prelude::*;
 use std::io::BufWriter;
 use std::io::Cursor;
 use structopt::StructOpt;
-use pcap::Capture;
+use pcap::{Capture, Linktype, Savefile};
 use gamestreaming::pnet::util::MacAddr;
 use gamestreaming::pnet::packet::ethernet::{EtherTypes, EthernetPacket};
 use gamestreaming::pnet::packet::ipv4::Ipv4Packet;
@@ -22,6 +22,8 @@ use gamestreaming::teredo::{Teredo, TeredoEndpoint};
 
 type Error = Box<dyn std::error::Error>;
 type Result<T> = std::result::Result<T, Error>;
+
+const AUTH_TAG_LEN: usize = 16;
 
 #[derive(Debug)]
 struct RtpPacketResult {
@@ -194,7 +196,7 @@ struct Opt {
     srtp_key: Option<String>,
 
     #[structopt(long)]
-    dump_video: Option<PathBuf>,
+    decrypt_pcap: Option<PathBuf>,
 }
 
 fn main() {
@@ -207,6 +209,8 @@ fn main() {
 
     let mut parser = PcapParser::new();
 
+    // Initialize Crypto context
+    // If no key is provided, use dummy key
     let mut crypto_context: crypto::MsSrtpCryptoContext = {
         if let Some(key) = opt.srtp_key {
             crypto::MsSrtpCryptoContext::from_base64(&key)
@@ -218,25 +222,28 @@ fn main() {
         }
     };
 
-    let fhandle = {
-        match opt.dump_video {
-            Some(filepath) => Some(File::create(filepath).expect("Failed to create file for video-dump")),
-            None => None
-        }
+    // Only used for writing decrypted pcap
+    let capture_out = Capture::dead(Linktype::ETHERNET)
+        .expect("Failed to create pcap OUT handle");
+
+    // Open handle for writing decrypted pcap
+    let mut pcap_out_handle = match opt.decrypt_pcap {
+        Some(filepath) => {
+            let savefile = capture_out.savefile(filepath)
+                .expect("Failed to create Savefile pcap OUT instance");
+
+            Some(savefile)
+        },
+        None => None
     };
 
-    let mut buf_writer = {
-        match fhandle {
-            Some(handle) => Some(BufWriter::new(handle)),
-            None => None,
-        }
-    };
-
-    while let Ok(packet) = cap.next() {
-        if let Ok(rtp_response) = parser.handle_packet(&packet.data) {
+    while let Ok(pcap_packet) = cap.next() {
+        if let Ok(rtp_response) = parser.handle_packet(&pcap_packet.data) {
+            // Handle RTP packet
             let packet = rtp_response.packet;
 
-            let decryption_result = {
+            // Decrypt RTP packet
+            let plaintext = {
                 if rtp_response.is_client {
                     // println!("CLIENT -> XBOX");
                     crypto_context.decrypt_rtp(&packet)
@@ -245,26 +252,37 @@ fn main() {
                     // println!("XBOX -> CLIENT");
                     crypto_context.decrypt_rtp_as_host(&packet)
                 }
-            };
+            }.expect("Failed to decrypt RTP");
 
-            if let Ok(plaintext) = decryption_result {
-                let mut reader = BufReader::new(&plaintext[..]);
-                if let Ok(rtp_packet) = rtp::packet::Packet::unmarshal(&mut reader) {
-                    packets::parse_rtp_packet(&rtp_packet);
-                    /*
-                    if let Some(ref mut writer) = buf_writer {
-                        if rtp_packet.header.ssrc == 1026 && rtp_packet.payload[0xC] == 0x4 {
-                            let frame = packets::VideoFrame::unpack(&rtp_packet.payload[..20].try_into().unwrap()).expect("Failed to read VideoFrame");
-                            println!("VideoFrame: {:?}", frame);
-                            // writer.write(&vframe).expect("Failed to write");
+            match pcap_out_handle.as_mut() {
+                Some(savefile) => {
+                    // Assemble plaintext packet payload
+                    let datasize_until_ciphertext = pcap_packet.data.len() - (plaintext.len() + AUTH_TAG_LEN);
+                    
+                    let mut plaintext_eth_data: Vec<u8> = vec![];
+                    plaintext_eth_data.write(&pcap_packet.data[..datasize_until_ciphertext])
+                        .expect("Failed to write packet data until ciphertext");
+                    plaintext_eth_data.write(&plaintext)
+                        .expect("Failed to write decrypted ciphertext portion");
 
-                            //return;
-                        }
+                    // Save decrypted RTP packet to pcap out
+                    savefile.write(&pcap::Packet::new(&pcap_packet.header, &plaintext_eth_data));
+                },
+                None => {
+                    // Parse & print packet info
+                    let mut reader = BufReader::new(&plaintext[..]);
+                    if let Ok(rtp_packet) = rtp::packet::Packet::unmarshal(&mut reader) {
+                        packets::parse_rtp_packet(&rtp_packet);
                     }
-                    */
                 }
-            } else {
-                println!("Failed to decrypt RTP");
+            }
+        } else {
+            // Write non-RTP packet as-is
+            match pcap_out_handle.as_mut() {
+                Some(savefile) => {
+                    savefile.write(&pcap_packet)
+                },
+                None => {},
             }
         }
     }
