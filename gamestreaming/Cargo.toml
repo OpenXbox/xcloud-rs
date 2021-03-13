@@ -21,3 +21,4 @@ xal = { path = "../xal" }
 teredo = { path = "../teredo" }
 correlation_vector = { git = "https://github.com/OpenXbox/CorrelationVector-Rust.git", branch = "master" }
 byteorder = "1.4.3"
+bitflags = "1.2.1"
