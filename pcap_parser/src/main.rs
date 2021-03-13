@@ -203,6 +203,7 @@ fn main() {
     let opt = Opt::from_args();
 
     println!("Using SRTP key: {:?}", opt.srtp_key);
+    println!("PCAP Decrypt path: {:?}", opt.decrypt_pcap);
     
     let mut cap = Capture::from_file(opt.input_file)
         .expect("Failed to open input file");
