@@ -48,6 +48,13 @@ RTP: MuxDCTControl Seq: 11, ts: 0, ssrc: 1026
 */
 
 #[derive(Debug, Clone, PartialEq)]
+pub enum ControlProtocolPacketType {
+    Create = 2,
+    Open = 3,
+    Close = 4
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct MuxDCTControlHeader {
     pub bla: u16,
     pub bla2: u16,
