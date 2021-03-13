@@ -2,6 +2,12 @@ mod serializing;
 mod udp_connection_probing;
 mod mux_dct_control;
 mod mux_dct_channel;
+mod audio;
+mod video;
+mod input;
+mod qos;
+mod message;
+
 
 use std::convert::{Into, From};
 use std::io::{Cursor};
@@ -38,6 +44,23 @@ impl From<u8> for PayloadType {
     }
 }
 
+#[derive(Debug, Clone, PartialEq)]
+#[repr(u8)]
+pub enum ControlProtocolMessageOpCode {
+    Auth = 0x1,
+    AuthComplete = 0x2,
+    Config = 0x3,
+    ControllerChange = 0x4,
+    Config2 = 0x6,
+}
+
+impl From<u8> for ControlProtocolMessageOpCode {
+    fn from(value: u8) -> Self {
+        let z: ControlProtocolMessageOpCode = unsafe { ::std::mem::transmute(value) };
+
+        z
+    }
+}
 
 pub fn parse_rtp_packet(packet: &rtp::packet::Packet) {
     let payload_type: PayloadType = packet.header.payload_type.into();
