@@ -34,12 +34,12 @@ pub struct AudioFormat {
     pub pcm_format: Option<PCMAudioFormat>,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct AudioServerHandshake {
     pub protocol_version: u32,
     pub reference_timestamp: u64,
     pub format_count: u32,
-    pub formats: [AudioFormat]
+    pub formats: Box<[AudioFormat]>
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -60,4 +60,12 @@ pub struct AudioData {
     pub timestamp: u64,
     pub data_size: u32,
     pub data: Vec<u8>
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum AudioPacket {
+    ServerHandshake(AudioServerHandshake),
+    ClientHandshake(AudioClientHandshake),
+    Control(AudioControl),
+    Data(AudioData)
 }

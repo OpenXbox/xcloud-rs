@@ -44,14 +44,14 @@ pub struct VideoFormat {
     pub rgb_format: Option<RGBVideoFormat>,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct VideoServerHandshake {
     pub protocol_version: u32,
     pub screen_width: u32,
     pub screen_height: u32,
     pub reference_timestamp: u64,
     pub format_count: u32,
-    pub formats: [VideoFormat]
+    pub formats: Box<[VideoFormat]>
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -79,4 +79,12 @@ pub struct VideoData {
     pub metadata: Vec<u8>,
     pub data_size: u32,
     pub offset: u32,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum VideoPacket {
+    ServerHandshake(VideoServerHandshake),
+    ClientHandshake(VideoClientHandshake),
+    Control(VideoControl),
+    Data(VideoData)
 }

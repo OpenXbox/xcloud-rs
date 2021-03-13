@@ -27,3 +27,11 @@ pub struct InputClientHandshake {
     pub maximum_touches: u32,
     pub reference_timestamp: u64,
 }
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum InputPacket {
+    ServerHandshake(InputServerHandshake),
+    ClientHandshake(InputClientHandshake),
+    FrameAck,
+    Frame
+}
