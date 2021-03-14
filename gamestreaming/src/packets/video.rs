@@ -52,6 +52,8 @@ bitflags! {
         const START_STREAM = 0x10;
         const REQUEST_KEYFRAMES = 0x20;
         const LAST_DISPLAYED_FRAME_RENDERED = 0x80;
+        const VIDEO_FORMAT_CHANGE = 0x200;
+        const BITRATE_UPDATE = 0x400;
         const SMOOTH_RENDERING_SETTINGS_SENT = 0x1000;
     }
 }
@@ -186,11 +188,14 @@ impl Deserialize for VideoClientHandshake {
 #[derive(Debug, Clone, PartialEq)]
 pub struct VideoControl {
     pub flags: u32,
-    pub last_displayed_frame: Option<u32>,
-    pub last_displayed_frame_rendered: Option<u32>,
+    // Tuple
+    pub last_displayed_frame: Option<(u32, i64)>,
     // Tuple of (first, last) lost frame
-    pub lost_frames: Option<(u32, u32)>,
     pub queue_depth: Option<u32>,
+    pub lost_frames: Option<(u32, u32)>,
+    pub bitrate_update: Option<u32>,
+    pub video_format_update: Option<VideoFormat>,
+    pub smooth_rendering_settings: Option<(u64, u64, u64)>,
 }
 
 impl Deserialize for VideoControl {
@@ -200,16 +205,16 @@ impl Deserialize for VideoControl {
         let flags_ = VideoControlFlags::from_bits(flags).unwrap();
 
         let last_displayed_frame = {
-            if flags_.contains(VideoControlFlags::LAST_DISPLAYED_FRAME) {
-                Some(reader.read_u32::<LittleEndian>()?)
+            if flags_.contains(VideoControlFlags::LAST_DISPLAYED_FRAME | VideoControlFlags::LAST_DISPLAYED_FRAME_RENDERED) {
+                Some((reader.read_u32::<LittleEndian>()?, reader.read_i64::<LittleEndian>()?))
             }
             else {
                 None
             }
         };
 
-        let last_displayed_frame_rendered = {
-            if flags_.contains(VideoControlFlags::LAST_DISPLAYED_FRAME_RENDERED) {
+        let queue_depth = {
+            if flags_.contains(VideoControlFlags::QUEUE_DEPTH) {
                 Some(reader.read_u32::<LittleEndian>()?)
             }
             else {
@@ -226,8 +231,8 @@ impl Deserialize for VideoControl {
             }
         };
 
-        let queue_depth = {
-            if flags_.contains(VideoControlFlags::QUEUE_DEPTH) {
+        let bitrate_update = {
+            if flags_.contains(VideoControlFlags::BITRATE_UPDATE) {
                 Some(reader.read_u32::<LittleEndian>()?)
             }
             else {
@@ -235,12 +240,37 @@ impl Deserialize for VideoControl {
             }
         };
 
+        let video_format_update = {
+            if flags_.contains(VideoControlFlags::VIDEO_FORMAT_CHANGE) {
+                Some(VideoFormat::deserialize(reader)?)
+            }
+            else {
+                None
+            }
+        };
+
+        let smooth_rendering_settings = {
+            if flags_.contains(VideoControlFlags::SMOOTH_RENDERING_SETTINGS_SENT) {
+                Some((
+                    reader.read_u64::<LittleEndian>()?,
+                    reader.read_u64::<LittleEndian>()?,
+                    reader.read_u64::<LittleEndian>()?
+                ))
+            }
+            else {
+                None
+            }
+        };
+
+
         Ok(Self {
             flags,
             last_displayed_frame,
-            last_displayed_frame_rendered,
+            queue_depth,
             lost_frames,
-            queue_depth
+            bitrate_update,
+            video_format_update,
+            smooth_rendering_settings
         })
     }
 }
