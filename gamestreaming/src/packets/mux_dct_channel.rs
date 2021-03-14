@@ -1,5 +1,16 @@
 use crate::packets::{audio, video, input, qos};
 
+/// Following channel classes exist:
+///
+/// Microsoft::Basix::Dct::Channel::Class::Audio
+/// Microsoft::Basix::Dct::Channel::Class::Video
+/// Microsoft::Basix::Dct::Channel::Class::Input
+/// Microsoft::Basix::Dct::Channel::Class::InputV2
+/// Microsoft::Basix::Dct::Channel::Class::Input Feedback
+/// Microsoft::Basix::Dct::Channel::Class::ChatAudio
+/// Microsoft::Basix::Dct::Channel::Class::Control
+/// Microsoft::Basix::Dct::Channel::Class::Messaging
+/// Microsoft::Basix::Dct::Channel::Class::QoS
 #[derive(Debug, Clone, PartialEq)]
 pub enum ChannelType {
     Base,
@@ -7,8 +18,12 @@ pub enum ChannelType {
     Audio,
     Video,
     Input,
+    InputV2,
+    InputFeedback,
+    ChatAudio,
+    Control,
+    Messaging,
     QoS,
-    Control
 }
 
 #[derive(Debug, Clone, PartialEq)]
