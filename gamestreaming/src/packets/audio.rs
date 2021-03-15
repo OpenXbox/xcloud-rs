@@ -13,11 +13,16 @@ pub enum AudioCodec {
     AAC = 2
 }
 
+bitflags! {
+    pub struct AudioControlFlags : u32 {
+        const STOP_STREAM = 0x08;
+        const START_STREAM = 0x10;
+        const REINITIALIZE = 0x40;
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
-pub enum AudioControlFlags {
-    StopStream = 0x08,
-    StartStream = 0x10,
-    Reinitialize = 0x40,
+pub enum AudioDataFlags {
 }
 
 #[derive(Debug, Clone, PartialEq)]

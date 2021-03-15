@@ -1,6 +1,5 @@
 use std::{convert::{TryInto, From}, io::{Read, Seek, Write}};
 use byteorder::*;
-use bitflags::bitflags;
 
 use crate::packets::serializing::{Deserialize, Serialize};
 
@@ -58,6 +57,12 @@ bitflags! {
     }
 }
 
+bitflags! {
+    pub struct VideoDataFlags : u32 {
+        const HASHED = 0x08;
+        const JITTER_INFO = 0x10;
+    }
+}
 #[derive(Debug, Clone, PartialEq)]
 pub struct RGBVideoFormat {
     pub bpp: u32,

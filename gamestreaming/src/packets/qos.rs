@@ -8,9 +8,10 @@ pub enum QosPacketType {
     ClientPolicy = 6,
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub enum QosControlFlags {
-    Reinitialize = 0x01
+bitflags! {
+    pub struct QosControlFlags : u8 {
+        const REINITIALIZE = 0x01;
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -25,7 +26,7 @@ pub struct QosServerPolicy {
 #[derive(Debug, Clone, PartialEq)]
 pub struct QosServerHandshake {
     pub protocol_version: u32,
-    pub min_supported_client_version: u32,
+    pub min_supported_client_version: Option<u32>, // if protocol_version >= 1
 }
 
 #[derive(Debug, Clone, PartialEq)]
