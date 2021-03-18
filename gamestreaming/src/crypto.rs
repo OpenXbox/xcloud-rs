@@ -21,13 +21,42 @@ use std::convert::TryInto;
 
 use crate::webrtc::srtp::{protection_profile, context};
 use crate::webrtc::rtp::header::Header;
+use pbkdf2::pbkdf2;
+use hmac::{digest, Hmac, Mac, NewMac};
+use sha2::Sha256;
 
 type Error = Box<dyn std::error::Error>;
 type Result<T> = std::result::Result<T, Error>;
 
+
+pub trait PingPacketSigningContext {
+    fn get_ping_signing_ctx(&self, salt: &[u8]) -> Result<Hmac<Sha256>>;
+}
+
 pub struct MsSrtpCryptoContext {
     crypto_ctx_in: context::Context,
     crypto_ctx_out: context::Context,
+    master_key: Vec<u8>,
+    master_salt: Vec<u8>
+}
+
+impl PingPacketSigningContext for MsSrtpCryptoContext {
+    fn get_ping_signing_ctx(&self, salt: &[u8]) -> Result<Hmac<Sha256>>
+    {
+        if salt.len() != 2 {
+            Err("Salt has invalid length, expected 2 bytes")?
+        }
+
+        let mut hmac_key: [u8; 0x20] = [0; 0x20];
+        MsSrtpCryptoContext::derive_hmac_key::<Sha256>(
+            &self.master_key,
+            salt,
+            100000,
+            &mut hmac_key
+        )?;
+
+        Ok(MsSrtpCryptoContext::get_keyed_hasher::<Sha256>(&hmac_key)?)
+    }
 }
 
 impl MsSrtpCryptoContext {
@@ -47,6 +76,8 @@ impl MsSrtpCryptoContext {
                 None,
                 None,
             )?,
+            master_key: master_key.to_vec(),
+            master_salt: master_salt.to_vec()
         })
     }
 
@@ -56,6 +87,20 @@ impl MsSrtpCryptoContext {
             master_bytes[..16].try_into()?,
             master_bytes[16..].try_into()?
         )
+    }
+
+    fn derive_hmac_key<T>(master_key: &[u8], salt: &[u8], iterations: u32, key_out: &mut [u8]) -> Result<()>
+        where T: digest::Update + digest::BlockInput + digest::FixedOutput + digest::Reset + Default + Clone
+    {
+        pbkdf2::<Hmac<Sha256>>(master_key, salt, iterations, key_out);
+
+        Ok(())
+    }
+
+    fn get_keyed_hasher<T>(hmac_key: &[u8]) -> Result<hmac::Hmac<T>>
+    where T: digest::Update + digest::BlockInput + digest::FixedOutput + digest::Reset + Default + Clone
+    {
+        Ok(hmac::Hmac::<T>::new_varkey(hmac_key)?)
     }
 
     pub fn decrypt_rtp_with_header(
@@ -93,7 +138,9 @@ impl MsSrtpCryptoContext {
 
 #[cfg(test)]
 mod test {
-    use super::MsSrtpCryptoContext;
+    use hex;
+    use hmac::Mac;
+    use super::*;
 
     pub const SRTP_KEY: &str = "RdHzuLLVGuO1aHILIEVJ1UzR7RWVioepmpy+9SRf";
 
@@ -110,4 +157,46 @@ mod test {
         
         assert_eq!(decrypted.len(), 1348);
     }
+
+    #[test]
+    fn test_ping_key_derivation() {
+
+        let mut hmac_key: [u8; 0x20] = [0; 0x20];
+        MsSrtpCryptoContext::derive_hmac_key::<Sha256>(
+            &hex::decode("d7d27ce7dfc3ef499935fbbdb4451dc6").unwrap(),
+            &hex::decode("ffff").unwrap(),
+            100000,
+            &mut hmac_key
+        ).expect("Failed to derive hmac key");
+        
+        assert_eq!(&hex::encode(hmac_key), "9dda3a76d9e73b41ad8b37881e9d5af973271573d2fd3783dd6650b9840afb94");
+    }
+
+    #[test]
+    fn test_keyed_hasher() {
+        let hmac_key = hex::decode("9dda3a76d9e73b41ad8b37881e9d5af973271573d2fd3783dd6650b9840afb94")
+            .expect("Failed to hexdecode hmac key");
+        let mut hasher = MsSrtpCryptoContext::get_keyed_hasher::<Sha256>(&hmac_key)
+            .expect("Failed to derive HMAC");
+        
+        hasher.update(&hex::decode("00000000").unwrap());
+        let signature = &hasher.finalize().into_bytes()[..];
+
+        assert_eq!(&hex::encode(signature), "d0c87bfa07d4e7fc9909d96e3cb3977d5232bbb391932236d56411f82d103bd5");
+    }
+
+    #[test]
+    fn test_get_ping_key_context() {
+        let ctx = MsSrtpCryptoContext::from_base64("19J859/D70mZNfu9tEUdxgUVVMbRDkV/L2LavviX")
+            .expect("Failed to create MS-SRTP context");
+        
+        let mut ping_signing_ctx = ctx.get_ping_signing_ctx(&hex::decode("ffff").unwrap())
+            .expect("Failed to create ping signing context");
+
+        ping_signing_ctx.update(&hex::decode("00000000").unwrap());
+        let signature = &ping_signing_ctx.finalize().into_bytes()[..];
+
+        assert_eq!(&hex::encode(signature), "d0c87bfa07d4e7fc9909d96e3cb3977d5232bbb391932236d56411f82d103bd5");
+    }
+
 }
