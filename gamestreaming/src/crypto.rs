@@ -28,9 +28,17 @@ use sha2::Sha256;
 type Error = Box<dyn std::error::Error>;
 type Result<T> = std::result::Result<T, Error>;
 
+pub trait OneShotHasher {
+    fn hash_oneshot(&mut self, data: &[u8]) -> Result<Vec<u8>>;
+}
 
-pub trait PingPacketSigningContext {
-    fn get_ping_signing_ctx(&self, salt: &[u8]) -> Result<Hmac<Sha256>>;
+impl OneShotHasher for Hmac<Sha256> {
+    fn hash_oneshot(&mut self, data: &[u8]) -> Result<Vec<u8>> {
+        self.update(data);
+        let signature = self.finalize_reset();
+
+        Ok(signature.into_bytes()[..].to_vec())
+    }
 }
 
 pub struct MsSrtpCryptoContext {
@@ -38,25 +46,6 @@ pub struct MsSrtpCryptoContext {
     crypto_ctx_out: context::Context,
     master_key: Vec<u8>,
     master_salt: Vec<u8>
-}
-
-impl PingPacketSigningContext for MsSrtpCryptoContext {
-    fn get_ping_signing_ctx(&self, salt: &[u8]) -> Result<Hmac<Sha256>>
-    {
-        if salt.len() != 2 {
-            Err("Salt has invalid length, expected 2 bytes")?
-        }
-
-        let mut hmac_key: [u8; 0x20] = [0; 0x20];
-        MsSrtpCryptoContext::derive_hmac_key::<Sha256>(
-            &self.master_key,
-            salt,
-            100000,
-            &mut hmac_key
-        )?;
-
-        Ok(MsSrtpCryptoContext::get_keyed_hasher::<Sha256>(&hmac_key)?)
-    }
 }
 
 impl MsSrtpCryptoContext {
@@ -101,6 +90,23 @@ impl MsSrtpCryptoContext {
     where T: digest::Update + digest::BlockInput + digest::FixedOutput + digest::Reset + Default + Clone
     {
         Ok(hmac::Hmac::<T>::new_varkey(hmac_key)?)
+    }
+
+    pub fn get_ping_signing_ctx(&self, salt: &[u8]) -> Result<Hmac<Sha256>>
+    {
+        if salt.len() != 2 {
+            Err("Salt has invalid length, expected 2 bytes")?
+        }
+
+        let mut hmac_key: [u8; 0x20] = [0; 0x20];
+        MsSrtpCryptoContext::derive_hmac_key::<Sha256>(
+            &self.master_key,
+            salt,
+            100000,
+            &mut hmac_key
+        )?;
+
+        Ok(MsSrtpCryptoContext::get_keyed_hasher::<Sha256>(&hmac_key)?)
     }
 
     pub fn decrypt_rtp_with_header(

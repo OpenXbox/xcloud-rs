@@ -1,11 +1,12 @@
-mod serializing;
+pub mod serializing;
 mod udp_connection_probing;
 mod mux_dct_control;
 mod mux_dct_channel;
 mod audio;
-mod video;
+pub mod video;
 mod input;
 mod qos;
+mod ping;
 mod message;
 
 
