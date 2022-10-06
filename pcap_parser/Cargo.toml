@@ -8,5 +8,5 @@ edition = "2018"
 
 [dependencies]
 gamestreaming = { path = "../gamestreaming" }
-pcap = "0.8.1"
-structopt = "0.3.21"
+pcap = "0.11.0"
+structopt = "0.3.26"

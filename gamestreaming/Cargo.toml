@@ -8,12 +8,12 @@ edition = "2018"
 
 [dependencies]
 base64 = "0.13.0"
-reqwest = { version = "0.10", features = ["json"] }
-serde = { version = "1.0.117", features = ["derive"] }
-serde_json = "1.0.59"
+reqwest = { version = "0.11.12", features = ["json"] }
+serde = { version = "1.0.145", features = ["derive"] }
+serde_json = "1.0.85"
 hexdump = "0.1.1"
-uuid = { version = "0.8.1", features = ["v4"] }
-pnet = "0.27.2"
+uuid = { version = "1.1.2", features = ["v4"] }
+pnet = "0.31.0"
 webrtc-rs-stun = "0.1.13"
 webrtc-rs-rtp = "0.1.0"
 webrtc-srtp = { path = "../webrtc-srtp" }
@@ -21,8 +21,8 @@ xal = { path = "../xal" }
 teredo = { path = "../teredo" }
 correlation_vector = { git = "https://github.com/OpenXbox/CorrelationVector-Rust.git", branch = "master" }
 byteorder = "1.4.3"
-bitflags = "1.2.1"
-pbkdf2 = { version = "0.7", default-features = false }
+bitflags = "1.3.2"
+pbkdf2 = { version = "0.11.0", default-features = false }
 hex = "0.4.3"
-sha2 = "0.9"
-hmac = "0.10.1"
+sha2 = "0.10.6"
+hmac = "0.12.1"
