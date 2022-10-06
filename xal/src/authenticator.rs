@@ -68,7 +68,7 @@ impl XalAuthenticator {
     }
 
     pub fn generate_random_state() -> String {
-        let state = uuid::Uuid::new_v4().to_hyphenated().to_string();
+        let state = uuid::Uuid::new_v4().hyphenated().to_string();
 
         base64::encode(state)
     }
@@ -167,15 +167,15 @@ impl XalAuthenticator {
             // {decf45e4-945d-4379-b708-d4ee92c12d99}
             models::DeviceType::ANDROID => [
                 "{".to_string(),
-                self.client_id.to_hyphenated().to_string(),
+                self.client_id.hyphenated().to_string(),
                 "}".to_string(),
             ]
             .concat(),
 
             // DECF45E4-945D-4379-B708-D4EE92C12D99
-            models::DeviceType::IOS => self.client_id.to_hyphenated().to_string().to_uppercase(),
+            models::DeviceType::IOS => self.client_id.hyphenated().to_string().to_uppercase(),
             // Unknown
-            _ => self.client_id.to_hyphenated().to_string(),
+            _ => self.client_id.hyphenated().to_string(),
         };
 
         let mut headers = reqwest::header::HeaderMap::new();

@@ -128,7 +128,7 @@ impl SmartglassClient {
             destination: "Xbox".to_owned(),
             command_type: command_type,
             command: command,
-            session_id: self.session_id.to_hyphenated().to_string(),
+            session_id: self.session_id.hyphenated().to_string(),
             source_id: "com.microsoft.smartglass".to_owned(),
             parameters: parameters,
             linked_xbox_id: console_live_id,
