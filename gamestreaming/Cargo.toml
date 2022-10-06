@@ -14,9 +14,7 @@ serde_json = "1.0.85"
 hexdump = "0.1.1"
 uuid = { version = "1.1.2", features = ["v4"] }
 pnet = "0.31.0"
-webrtc-rs-stun = "0.1.13"
-webrtc-rs-rtp = "0.1.0"
-webrtc-srtp = { path = "../webrtc-srtp" }
+webrtc = "0.5.1"
 xal = { path = "../xal" }
 teredo = { path = "../teredo" }
 correlation_vector = { git = "https://github.com/OpenXbox/CorrelationVector-Rust.git", branch = "master" }
