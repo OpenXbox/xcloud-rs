@@ -1,5 +1,4 @@
 use std::convert::TryInto;
-
 /// Implementation of MS-SRTP
 /// Source: https://docs.microsoft.com/en-us/openspecs/office_protocols/ms-srtp/bf622cc1-9fb5-4fa2-b18d-239a84dcca65
 ///
@@ -19,10 +18,10 @@ use std::convert::TryInto;
 /// the cryptographic context, then uses the SSRC in the packet to decide the per SSRC transform independent
 /// parameters in the cryptographic context.
 
-use crate::webrtc::srtp::{protection_profile, context};
-use crate::webrtc::rtp::header::Header;
+use webrtc::srtp::{protection_profile, context};
+use webrtc::rtp::header::Header;
 use pbkdf2::pbkdf2;
-use hmac::{digest, Hmac, Mac, NewMac};
+use hmac::{digest, Hmac, Mac};
 use sha2::Sha256;
 
 type Error = Box<dyn std::error::Error>;
@@ -49,19 +48,19 @@ pub struct MsSrtpCryptoContext {
 }
 
 impl MsSrtpCryptoContext {
-    pub fn new(master_key: [u8; 16], master_salt: [u8; 14]) -> Result<Self> {
+    pub fn new(master_key: [u8; 16], master_salt: [u8; 12]) -> Result<Self> {
         Ok(Self {
             crypto_ctx_in: context::Context::new(
                 &master_key,
                 &master_salt,
-                protection_profile::ProtectionProfile::AEADAES128GCM_MS_SRTP,
+                protection_profile::ProtectionProfile::AeadAes128Gcm,
                 None,
                 None,
             )?,
             crypto_ctx_out: context::Context::new(
                 &master_key,
                 &master_salt,
-                protection_profile::ProtectionProfile::AEADAES128GCM_MS_SRTP,
+                protection_profile::ProtectionProfile::AeadAes128Gcm,
                 None,
                 None,
             )?,
@@ -74,22 +73,21 @@ impl MsSrtpCryptoContext {
         let master_bytes = base64::decode(master_bytes)?;
         Self::new(
             master_bytes[..16].try_into()?,
-            master_bytes[16..].try_into()?
+            master_bytes[16..28].try_into()?
         )
     }
 
     fn derive_hmac_key<T>(master_key: &[u8], salt: &[u8], iterations: u32, key_out: &mut [u8]) -> Result<()>
-        where T: digest::Update + digest::BlockInput + digest::FixedOutput + digest::Reset + Default + Clone
+        where T: digest::Update + digest::FixedOutput + digest::Reset + Default + Clone
     {
         pbkdf2::<Hmac<Sha256>>(master_key, salt, iterations, key_out);
 
         Ok(())
     }
 
-    fn get_keyed_hasher<T>(hmac_key: &[u8]) -> Result<hmac::Hmac<T>>
-    where T: digest::Update + digest::BlockInput + digest::FixedOutput + digest::Reset + Default + Clone
+    fn get_keyed_hasher(hmac_key: &[u8]) -> Result<Hmac<Sha256>>
     {
-        Ok(hmac::Hmac::<T>::new_varkey(hmac_key)?)
+        Ok(hmac::Hmac::<Sha256>::new_from_slice(hmac_key)?)
     }
 
     pub fn get_ping_signing_ctx(&self, salt: &[u8]) -> Result<Hmac<Sha256>>
@@ -106,7 +104,7 @@ impl MsSrtpCryptoContext {
             &mut hmac_key
         )?;
 
-        Ok(MsSrtpCryptoContext::get_keyed_hasher::<Sha256>(&hmac_key)?)
+        Ok(MsSrtpCryptoContext::get_keyed_hasher(&hmac_key)?)
     }
 
     pub fn decrypt_rtp_with_header(
@@ -114,11 +112,11 @@ impl MsSrtpCryptoContext {
         encrypted: &[u8],
         header: &Header
     ) -> Result<Vec<u8>> {
-        Ok(self.crypto_ctx_out.decrypt_rtp_with_header(encrypted, header)?)
+        Ok(self.crypto_ctx_out.decrypt_rtp_with_header(encrypted, header)?.to_vec())
     }
 
     pub fn decrypt_rtp(&mut self, encrypted: &[u8]) -> Result<Vec<u8>> {
-        Ok(self.crypto_ctx_in.decrypt_rtp(encrypted)?)
+        Ok(self.crypto_ctx_in.decrypt_rtp(encrypted)?.to_vec())
     }
 
     pub fn encrypt_rtp_with_header(
@@ -126,19 +124,19 @@ impl MsSrtpCryptoContext {
         plaintext: &[u8],
         header: &Header
     ) -> Result<Vec<u8>> {
-        Ok(self.crypto_ctx_out.encrypt_rtp_with_header(plaintext, header)?)
+        Ok(self.crypto_ctx_out.encrypt_rtp_with_header(plaintext, header)?.to_vec())
     }
 
     pub fn encrypt_rtp(&mut self, plaintext: &[u8]) -> Result<Vec<u8>> {
-        Ok(self.crypto_ctx_out.encrypt_rtp(plaintext)?)
+        Ok(self.crypto_ctx_out.encrypt_rtp(plaintext)?.to_vec())
     }
 
     pub fn decrypt_rtp_as_host(&mut self, encrypted: &[u8]) -> Result<Vec<u8>> {
-        Ok(self.crypto_ctx_out.decrypt_rtp(encrypted)?)
+        Ok(self.crypto_ctx_out.decrypt_rtp(encrypted)?.to_vec())
     }
 
     pub fn encrypt_rtp_as_host(&mut self, encrypted: &[u8]) -> Result<Vec<u8>> {
-        Ok(self.crypto_ctx_in.decrypt_rtp(encrypted)?)
+        Ok(self.crypto_ctx_in.decrypt_rtp(encrypted)?.to_vec())
     }
 }
 
@@ -182,7 +180,7 @@ mod test {
     fn test_keyed_hasher() {
         let hmac_key = hex::decode("9dda3a76d9e73b41ad8b37881e9d5af973271573d2fd3783dd6650b9840afb94")
             .expect("Failed to hexdecode hmac key");
-        let mut hasher = MsSrtpCryptoContext::get_keyed_hasher::<Sha256>(&hmac_key)
+        let mut hasher = MsSrtpCryptoContext::get_keyed_hasher(&hmac_key)
             .expect("Failed to derive HMAC");
         
         hasher.update(&hex::decode("00000000").unwrap());

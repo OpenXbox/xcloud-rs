@@ -4,10 +4,11 @@ pub extern crate byteorder;
 #[macro_use]
 pub extern crate bitflags;
 
+pub extern crate webrtc;
+
 pub mod crypto;
 pub mod models;
 pub mod packets;
-pub mod webrtc;
 
 #[cfg(test)]
 mod tests {

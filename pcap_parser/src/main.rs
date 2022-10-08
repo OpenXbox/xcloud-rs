@@ -6,6 +6,7 @@ use std::fs::File;
 use std::io::prelude::*;
 use std::io::BufWriter;
 use std::io::Cursor;
+use gamestreaming::webrtc::util::Unmarshal;
 use structopt::StructOpt;
 use pcap::{Capture, Linktype, Savefile};
 use gamestreaming::pnet::util::MacAddr;
@@ -50,7 +51,7 @@ impl PcapParser{
         teredo_wrapped: bool
     ) -> Result<Vec<u8>> {
         if let Some(udp) = UdpPacket::new(packet) {
-            let payload = udp.payload();
+            let mut payload = udp.payload();
 
             if stun::message::is_message(payload) {
                 let mut stun_msg = stun::message::Message::new();
@@ -63,8 +64,8 @@ impl PcapParser{
                 }
             }
             else if payload[0] == 0x80 {
-                let mut reader = BufReader::new(payload);
-                if let Ok(rtp_packet) = rtp::packet::Packet::unmarshal(&mut reader) {
+                // let mut reader = BufReader::new(payload);
+                if let Ok(rtp_packet) = rtp::packet::Packet::unmarshal(&mut payload) {
                     if rtp_packet.header.version == 2 {
                         return Ok(payload.to_vec());
                     }
@@ -238,7 +239,7 @@ fn main() {
         None => None
     };
 
-    while let Ok(pcap_packet) = cap.next() {
+    while let Ok(pcap_packet) = cap.next_packet() {
         if let Ok(rtp_response) = parser.handle_packet(&pcap_packet.data) {
             // Handle RTP packet
             let packet = rtp_response.packet;
@@ -270,9 +271,9 @@ fn main() {
                     savefile.write(&pcap::Packet::new(&pcap_packet.header, &plaintext_eth_data));
                 },
                 None => {
+                    let mut payload = &packet[..];
                     // Parse & print packet info
-                    let mut reader = BufReader::new(&plaintext[..]);
-                    if let Ok(rtp_packet) = rtp::packet::Packet::unmarshal(&mut reader) {
+                    if let Ok(rtp_packet) = rtp::packet::Packet::unmarshal(&mut payload) {
                         packets::parse_rtp_packet(&rtp_packet);
                     }
                 }

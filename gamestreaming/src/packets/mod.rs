@@ -14,7 +14,7 @@ use std::convert::{Into, From};
 use std::io::{Cursor};
 use hexdump;
 
-use crate::webrtc::rtp;
+use webrtc::rtp;
 
 use serializing::{Deserialize};
 use udp_connection_probing::{ConnectionProbingPacket, ConnectionProbingType, ConnectionProbingSyn, ConnectionProbingAck};
