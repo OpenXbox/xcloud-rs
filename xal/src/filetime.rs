@@ -29,6 +29,8 @@ impl FileTime<Utc> for DateTime<Utc> {
 
     /// Example
     /// ```
+    /// use chrono::{DateTime, TimeZone, Utc};
+    /// use xal::filetime::FileTime;
     /// let dt = Utc.ymd(2009, 7, 25).and_hms_nano(23, 0, 0, 1000);
     /// let ft = DateTime::<Utc>::from_filetime(128930364000001000);
     /// assert_eq!(dt, ft);
@@ -44,6 +46,8 @@ impl FileTime<Utc> for DateTime<Utc> {
 
     /// Example
     /// ```
+    /// use chrono::{TimeZone, Utc};
+    /// use xal::filetime::FileTime;
     /// let dt = Utc.ymd(2009, 7, 25).and_hms_nano(23, 0, 0, 1000);
     /// assert_eq!(dt.to_filetime(), 128930364000001000);
     /// ```
