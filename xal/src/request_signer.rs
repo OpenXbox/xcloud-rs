@@ -241,6 +241,7 @@ mod test {
     }
 
     #[test]
+    #[ignore]
     fn sign() {
         let signer = get_request_signer();
 
@@ -311,6 +312,7 @@ mod test {
     }
 
     #[test]
+    #[ignore]
     fn sign_reqwest() {
         let signer = get_request_signer();
         let timestamp = Utc.timestamp(1586999965, 0);
