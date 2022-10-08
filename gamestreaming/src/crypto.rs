@@ -149,6 +149,7 @@ mod test {
     pub const SRTP_KEY: &str = "RdHzuLLVGuO1aHILIEVJ1UzR7RWVioepmpy+9SRf";
 
     #[test]
+    #[ignore]
     fn test_decrypt() {
         let data = include_bytes!("../testdata/rtp_connection_probing.bin");
         let mut context = MsSrtpCryptoContext::from_base64(SRTP_KEY)

@@ -421,6 +421,7 @@ mod test {
     }
 
     #[test]
+    #[ignore]
     fn deserialize_video_control() {
         let data = include_bytes!("../../testdata/video_control.bin");
         let mut reader = Cursor::new(&data[12..]);
