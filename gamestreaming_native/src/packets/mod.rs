@@ -1,24 +1,25 @@
+mod audio;
+mod input;
+mod message;
+mod mux_dct_channel;
+mod mux_dct_control;
+mod ping;
+mod qos;
 pub mod serializing;
 mod udp_connection_probing;
-mod mux_dct_control;
-mod mux_dct_channel;
-mod audio;
 pub mod video;
-mod input;
-mod qos;
-mod ping;
-mod message;
 
-
-use std::convert::{Into, From};
-use std::io::{Cursor};
 use hexdump;
+use std::convert::{From, Into};
+use std::io::Cursor;
 
 use webrtc::rtp;
 
-use serializing::{Deserialize};
-use udp_connection_probing::{ConnectionProbingPacket, ConnectionProbingType, ConnectionProbingSyn, ConnectionProbingAck};
 use mux_dct_control::MuxDCTControlPacket;
+use serializing::Deserialize;
+use udp_connection_probing::{
+    ConnectionProbingAck, ConnectionProbingPacket, ConnectionProbingSyn, ConnectionProbingType,
+};
 
 #[derive(Debug, Clone, PartialEq)]
 #[repr(u8)]
@@ -80,7 +81,8 @@ pub fn parse_rtp_packet(packet: &rtp::packet::Packet) {
         },
         */
         PayloadType::MuxDCTControl => {
-            println!("RTP: {:?} Seq: {}, ts: {}, ssrc: {}",
+            println!(
+                "RTP: {:?} Seq: {}, ts: {}, ssrc: {}",
                 payload_type,
                 packet.header.sequence_number,
                 packet.header.timestamp,
@@ -90,7 +92,7 @@ pub fn parse_rtp_packet(packet: &rtp::packet::Packet) {
             let packet = MuxDCTControlPacket::deserialize(&mut reader)
                 .expect("Failed to parse MuxDCTControlPacket");
             println!("{:?}", packet);
-        },
+        }
         /*
         PayloadType::FECControl => {
 
@@ -109,13 +111,19 @@ pub fn parse_rtp_packet(packet: &rtp::packet::Packet) {
 
             match packet {
                 ConnectionProbingPacket::Syn(pdata) => {
-                    println!("ConnectionProbingPacket::Syn(DataLen={})", pdata.probe_data.len());
-                },
+                    println!(
+                        "ConnectionProbingPacket::Syn(DataLen={})",
+                        pdata.probe_data.len()
+                    );
+                }
                 ConnectionProbingPacket::Ack(pdata) => {
-                    println!("ConnectionProbingPacket::Ack(AcceptedSize={}, Appendix={})", pdata.accepted_packet_size, pdata.appendix);
+                    println!(
+                        "ConnectionProbingPacket::Ack(AcceptedSize={}, Appendix={})",
+                        pdata.accepted_packet_size, pdata.appendix
+                    );
                 }
             }
-        },
+        }
         /*
         PayloadType::URCPDummyPacket => {
 
@@ -125,7 +133,8 @@ pub fn parse_rtp_packet(packet: &rtp::packet::Packet) {
         },
         */
         _ => {
-            println!("RTP: {:?} Seq: {}, ts: {}, ssrc: {}",
+            println!(
+                "RTP: {:?} Seq: {}, ts: {}, ssrc: {}",
                 payload_type,
                 packet.header.sequence_number,
                 packet.header.timestamp,

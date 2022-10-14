@@ -10,7 +10,7 @@ edition = "2018"
 reqwest = { version = "0.11.12", features = ["json"] }
 serde = { version = "1.0.145", features = ["derive"] }
 serde_json = "1.0.85"
-correlation_vector = { git = "https://github.com/tuxuser/CorrelationVector-Rust.git", branch = "master" }
+cvlib = "0.1.2"
 filetime = "0.2.17"
 base64 = "0.13.0"
 chrono = "0.4.22"
@@ -24,3 +24,4 @@ rand_core = "0.6.4"
 url = "2.3.1"
 ecdsa = "0.14.8"
 signature = "1.6.4"
+oauth2 = "4.2.3"

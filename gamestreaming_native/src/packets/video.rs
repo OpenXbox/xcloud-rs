@@ -1,5 +1,8 @@
-use std::{convert::{TryInto, From}, io::{Read, Seek, Write}};
 use byteorder::*;
+use std::{
+    convert::{From, TryInto},
+    io::{Read, Seek, Write},
+};
 
 use crate::packets::serializing::{Deserialize, Serialize};
 
@@ -85,7 +88,7 @@ impl Deserialize for RGBVideoFormat {
             unknown,
             red_mask,
             green_mask,
-            blue_mask
+            blue_mask,
         })
     }
 }
@@ -107,9 +110,7 @@ impl Deserialize for VideoFormat {
         let codec = reader.read_u32::<LittleEndian>()?;
 
         let rgb_format = match codec.try_into()? {
-            VideoCodec::RGB => {
-                Some(RGBVideoFormat::deserialize(reader)?)
-            }
+            VideoCodec::RGB => Some(RGBVideoFormat::deserialize(reader)?),
             _ => None,
         };
 
@@ -118,7 +119,7 @@ impl Deserialize for VideoFormat {
             width,
             height,
             codec,
-            rgb_format
+            rgb_format,
         })
     }
 }
@@ -133,7 +134,7 @@ pub struct VideoServerHandshake {
     pub fps: u32,
     pub reference_timestamp: u64,
     pub format_count: u32,
-    pub formats: Vec<VideoFormat>
+    pub formats: Vec<VideoFormat>,
 }
 
 impl Deserialize for VideoServerHandshake {
@@ -161,7 +162,7 @@ impl Deserialize for VideoServerHandshake {
             fps,
             reference_timestamp,
             format_count,
-            formats: formats
+            formats: formats,
         })
     }
 }
@@ -185,7 +186,7 @@ impl Deserialize for VideoClientHandshake {
             unknown1,
             unknown2,
             initial_frame_id,
-            requested_format
+            requested_format,
         })
     }
 }
@@ -210,10 +211,15 @@ impl Deserialize for VideoControl {
         let flags_ = VideoControlFlags::from_bits(flags).unwrap();
 
         let last_displayed_frame = {
-            if flags_.contains(VideoControlFlags::LAST_DISPLAYED_FRAME | VideoControlFlags::LAST_DISPLAYED_FRAME_RENDERED) {
-                Some((reader.read_u32::<LittleEndian>()?, reader.read_i64::<LittleEndian>()?))
-            }
-            else {
+            if flags_.contains(
+                VideoControlFlags::LAST_DISPLAYED_FRAME
+                    | VideoControlFlags::LAST_DISPLAYED_FRAME_RENDERED,
+            ) {
+                Some((
+                    reader.read_u32::<LittleEndian>()?,
+                    reader.read_i64::<LittleEndian>()?,
+                ))
+            } else {
                 None
             }
         };
@@ -221,17 +227,18 @@ impl Deserialize for VideoControl {
         let queue_depth = {
             if flags_.contains(VideoControlFlags::QUEUE_DEPTH) {
                 Some(reader.read_u32::<LittleEndian>()?)
-            }
-            else {
+            } else {
                 None
             }
         };
 
         let lost_frames = {
             if flags_.contains(VideoControlFlags::LOST_FRAMES) {
-                Some((reader.read_u32::<LittleEndian>()?, reader.read_u32::<LittleEndian>()?))
-            }
-            else {
+                Some((
+                    reader.read_u32::<LittleEndian>()?,
+                    reader.read_u32::<LittleEndian>()?,
+                ))
+            } else {
                 None
             }
         };
@@ -239,8 +246,7 @@ impl Deserialize for VideoControl {
         let bitrate_update = {
             if flags_.contains(VideoControlFlags::BITRATE_UPDATE) {
                 Some(reader.read_u32::<LittleEndian>()?)
-            }
-            else {
+            } else {
                 None
             }
         };
@@ -248,8 +254,7 @@ impl Deserialize for VideoControl {
         let video_format_update = {
             if flags_.contains(VideoControlFlags::VIDEO_FORMAT_CHANGE) {
                 Some(VideoFormat::deserialize(reader)?)
-            }
-            else {
+            } else {
                 None
             }
         };
@@ -259,14 +264,12 @@ impl Deserialize for VideoControl {
                 Some((
                     reader.read_u64::<LittleEndian>()?,
                     reader.read_u64::<LittleEndian>()?,
-                    reader.read_u64::<LittleEndian>()?
+                    reader.read_u64::<LittleEndian>()?,
                 ))
-            }
-            else {
+            } else {
                 None
             }
         };
-
 
         Ok(Self {
             flags,
@@ -275,7 +278,7 @@ impl Deserialize for VideoControl {
             lost_frames,
             bitrate_update,
             video_format_update,
-            smooth_rendering_settings
+            smooth_rendering_settings,
         })
     }
 }
@@ -293,7 +296,7 @@ pub struct VideoData {
     pub offset: u32,
     pub unknown3: u32,
     pub data_size: u32,
-    pub data: Vec<u8>
+    pub data: Vec<u8>,
 }
 
 impl Deserialize for VideoData {
@@ -329,7 +332,7 @@ impl Deserialize for VideoData {
             offset,
             unknown3,
             data_size,
-            data
+            data,
         })
     }
 }
@@ -339,26 +342,22 @@ pub enum VideoPacket {
     ServerHandshake(VideoServerHandshake),
     ClientHandshake(VideoClientHandshake),
     Control(VideoControl),
-    Data(VideoData)
+    Data(VideoData),
 }
 
 impl Deserialize for VideoPacket {
     fn deserialize<T: Read + Seek>(reader: &mut T) -> Result<Self> {
         let packet_type = reader.read_u32::<LittleEndian>()?.try_into()?;
 
-        let packet  = match packet_type {
+        let packet = match packet_type {
             VideoPacketType::ServerHandshake => {
                 VideoPacket::ServerHandshake(VideoServerHandshake::deserialize(reader)?)
-            },
+            }
             VideoPacketType::ClientHandshake => {
                 VideoPacket::ClientHandshake(VideoClientHandshake::deserialize(reader)?)
-            },
-            VideoPacketType::Control => {
-                VideoPacket::Control(VideoControl::deserialize(reader)?)
-            },
-            VideoPacketType::Data => {
-                VideoPacket::Data(VideoData::deserialize(reader)?)
-            },
+            }
+            VideoPacketType::Control => VideoPacket::Control(VideoControl::deserialize(reader)?),
+            VideoPacketType::Data => VideoPacket::Data(VideoData::deserialize(reader)?),
         };
 
         Ok(packet)
@@ -375,8 +374,7 @@ mod test {
         let data = include_bytes!("../../testdata/video_server_handshake.bin");
         let mut reader = Cursor::new(&data[20..]);
 
-        let packet = VideoPacket::deserialize(&mut reader).
-            expect("Failed to deserialize packet");
+        let packet = VideoPacket::deserialize(&mut reader).expect("Failed to deserialize packet");
 
         println!("{:?}", packet);
         match packet {
@@ -393,8 +391,8 @@ mod test {
                 assert_eq!(server_hs_pkt.formats[0].height, 720);
                 assert_eq!(server_hs_pkt.formats[0].codec, 0);
                 assert_eq!(server_hs_pkt.formats[0].rgb_format, None);
-            },
-            _ => panic!("Parsed into invalid packet")
+            }
+            _ => panic!("Parsed into invalid packet"),
         }
     }
 
@@ -403,8 +401,7 @@ mod test {
         let data = include_bytes!("../../testdata/video_client_handshake.bin");
         let mut reader = Cursor::new(&data[12..]);
 
-        let packet = VideoPacket::deserialize(&mut reader).
-            expect("Failed to deserialize packet");
+        let packet = VideoPacket::deserialize(&mut reader).expect("Failed to deserialize packet");
 
         println!("{:?}", packet);
         match packet {
@@ -415,8 +412,8 @@ mod test {
                 assert_eq!(client_hs_pkt.requested_format.height, 720);
                 assert_eq!(client_hs_pkt.requested_format.codec, 0);
                 assert_eq!(client_hs_pkt.requested_format.rgb_format, None);
-            },
-            _ => panic!("Parsed into invalid packet")
+            }
+            _ => panic!("Parsed into invalid packet"),
         }
     }
 
@@ -426,8 +423,7 @@ mod test {
         let data = include_bytes!("../../testdata/video_control.bin");
         let mut reader = Cursor::new(&data[12..]);
 
-        let packet = VideoPacket::deserialize(&mut reader).
-            expect("Failed to deserialize packet");
+        let packet = VideoPacket::deserialize(&mut reader).expect("Failed to deserialize packet");
 
         println!("{:?}", packet);
         match packet {
@@ -437,8 +433,8 @@ mod test {
 
                 panic!("VideoControl struct is not correct yet");
                 // assert!(flags.contains(VideoControlFlags::START_STREAM));
-            },
-            _ => panic!("Parsed into invalid packet")
+            }
+            _ => panic!("Parsed into invalid packet"),
         }
     }
 
@@ -447,8 +443,7 @@ mod test {
         let data = include_bytes!("../../testdata/video_data.bin");
         let mut reader = Cursor::new(&data[12..]);
 
-        let packet = VideoPacket::deserialize(&mut reader).
-            expect("Failed to deserialize packet");
+        let packet = VideoPacket::deserialize(&mut reader).expect("Failed to deserialize packet");
 
         println!("{:?}", packet);
         match packet {
@@ -463,8 +458,8 @@ mod test {
                 assert_eq!(data_pkt.unknown3, 9);
                 assert_eq!(data_pkt.data_size, 1245);
                 assert_eq!(data_pkt.data.len(), 1245);
-            },
-            _ => panic!("Parsed into invalid packet")
+            }
+            _ => panic!("Parsed into invalid packet"),
         }
     }
 }

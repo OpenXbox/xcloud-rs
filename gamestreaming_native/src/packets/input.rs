@@ -37,45 +37,41 @@ pub struct InputFrameAck {
 pub struct InputFrameV3 {
     pub frame_id: u32,
     pub timestamp: i64,
-    pub frame: FrameV3Data
+    pub frame: FrameV3Data,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct FrameV3Data {
     pub input_count: u32,
-    pub unknown: Option<Vec<(u32, u32, u32)>>, // length: input_count 
+    pub unknown: Option<Vec<(u32, u32, u32)>>, // length: input_count
     pub data_mouse: Option<MouseData>,
     pub data_gamepad: Option<GamepadData>,
     pub data_keyboard: Option<KeyboardData>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct MouseData {
-}
+pub struct MouseData {}
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct GamepadData {
-}
+pub struct GamepadData {}
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct KeyboardData {
-}
+pub struct KeyboardData {}
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct InputFrameV4 {
     pub frame_id: u32,
     pub timestamp: i64,
-    pub frame_changes: FrameChanges
+    pub frame_changes: FrameChanges,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct FrameChanges {
-}
+pub struct FrameChanges {}
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum InputPacket {
     ServerHandshake(InputServerHandshake),
     ClientHandshake(InputClientHandshake),
     FrameAck,
-    Frame
+    Frame,
 }

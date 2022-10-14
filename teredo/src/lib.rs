@@ -1,7 +1,6 @@
-
+use pnet::packet::ipv6;
 use std::convert::{From, TryFrom, TryInto};
 use std::net::{Ipv4Addr, Ipv6Addr};
-use pnet::packet::ipv6;
 
 type Error = Box<dyn std::error::Error>;
 type Result<T> = std::result::Result<T, Error>;
@@ -12,10 +11,7 @@ pub trait Teredo {
 
 impl Teredo for [u8; 16] {
     fn is_teredo(&self) -> bool {
-        self[0] == 0x20 &&
-        self[1] == 0x01 &&
-        self[2] == 0x00 &&
-        self[3] == 0x00
+        self[0] == 0x20 && self[1] == 0x01 && self[2] == 0x00 && self[3] == 0x00
     }
 }
 
@@ -27,17 +23,15 @@ impl Teredo for Ipv6Addr {
 
 impl Teredo for ipv6::Ipv6 {
     fn is_teredo(&self) -> bool {
-        self.version == 6 &&
-        self.source.is_teredo() &&
-        self.destination.is_teredo()
+        self.version == 6 && self.source.is_teredo() && self.destination.is_teredo()
     }
 }
 
 impl<'a> Teredo for ipv6::Ipv6Packet<'a> {
     fn is_teredo(&self) -> bool {
-        self.get_version() == 6 &&
-        self.get_source().is_teredo() &&
-        self.get_destination().is_teredo()
+        self.get_version() == 6
+            && self.get_source().is_teredo()
+            && self.get_destination().is_teredo()
     }
 }
 
@@ -72,8 +66,7 @@ pub struct TeredoEndpoint {
     pub udp_port: u16,
 }
 
-impl TryFrom<[u8; 16]> for TeredoEndpoint
-{
+impl TryFrom<[u8; 16]> for TeredoEndpoint {
     type Error = Error;
 
     fn try_from(value: [u8; 16]) -> Result<Self> {
@@ -86,13 +79,15 @@ impl TryFrom<[u8; 16]> for TeredoEndpoint
             teredo_server_ipv4: u32::from_be_bytes(value[4..8].try_into().unwrap()).into(),
             flags: u16::from_be_bytes(value[8..10].try_into().unwrap()),
             udp_port: u16::from_be_bytes(value[10..12].try_into().unwrap()) ^ 0xFFFF,
-            teredo_client_ipv4: (u32::from_be_bytes(value[12..16].try_into().unwrap()) ^ 0xFFFF_FFFF).try_into().unwrap()
+            teredo_client_ipv4: (u32::from_be_bytes(value[12..16].try_into().unwrap())
+                ^ 0xFFFF_FFFF)
+                .try_into()
+                .unwrap(),
         })
     }
 }
 
-impl TryFrom<Ipv6Addr> for TeredoEndpoint
-{
+impl TryFrom<Ipv6Addr> for TeredoEndpoint {
     type Error = Error;
 
     fn try_from(value: Ipv6Addr) -> Result<Self> {
@@ -114,10 +109,7 @@ impl TeredoHeader for ipv6::Ipv6 {
             Err("Not a teredo packet")?
         }
 
-        Ok(
-            (self.source.try_into()?,
-            self.destination.try_into()?)
-        )
+        Ok((self.source.try_into()?, self.destination.try_into()?))
     }
 }
 
@@ -127,17 +119,17 @@ impl<'a> TeredoHeader for ipv6::Ipv6Packet<'a> {
             Err("Not a teredo packet")?
         }
 
-        Ok(
-            (self.get_source().try_into()?,
-            self.get_destination().try_into()?)
-        )
+        Ok((
+            self.get_source().try_into()?,
+            self.get_destination().try_into()?,
+        ))
     }
 }
 
 #[cfg(test)]
-mod test{
+mod test {
+    use super::{Ipv4Addr, Ipv6Addr, Teredo, TeredoEndpoint, TryInto};
     use std::str::FromStr;
-    use super::{TeredoEndpoint, Teredo, Ipv6Addr, Ipv4Addr, TryInto};
 
     #[test]
     fn is_teredo_address() {
@@ -154,8 +146,14 @@ mod test{
         let ep_teredo: TeredoEndpoint = ipv6.try_into().unwrap();
 
         assert_eq!(ep_teredo.prefix, 0x20010000);
-        assert_eq!(ep_teredo.teredo_client_ipv4, Ipv4Addr::from_str("45.12.54.194").unwrap());
-        assert_eq!(ep_teredo.teredo_server_ipv4, Ipv4Addr::from_str("51.140.36.244").unwrap());
+        assert_eq!(
+            ep_teredo.teredo_client_ipv4,
+            Ipv4Addr::from_str("45.12.54.194").unwrap()
+        );
+        assert_eq!(
+            ep_teredo.teredo_server_ipv4,
+            Ipv4Addr::from_str("51.140.36.244").unwrap()
+        );
         assert_eq!(ep_teredo.udp_port, 53020);
     }
 }

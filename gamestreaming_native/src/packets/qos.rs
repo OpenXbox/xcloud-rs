@@ -51,7 +51,6 @@ pub struct QosData {
     pub frame_id: u32,
 }
 
-
 #[derive(Debug, Clone, PartialEq)]
 pub enum QosPacket {
     ServerHandshake(QosServerHandshake),

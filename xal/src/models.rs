@@ -56,24 +56,9 @@ impl Default for SigningPolicy {
 }
 
 pub mod request {
-    use super::{Deserialize, Serialize};
+    use josekit::jwk::Jwk;
 
-    #[derive(Debug, Serialize, Deserialize)]
-    #[serde(rename_all = "PascalCase")]
-    pub struct ProofKey<'a> {
-        #[serde(alias = "use")]
-        pub usage: &'a str,
-        #[serde(alias = "alg")]
-        pub algorithm: &'a str,
-        #[serde(alias = "kty")]
-        pub key_type: &'a str,
-        #[serde(alias = "crv")]
-        pub curve: &'a str,
-        #[serde(alias = "x")]
-        pub pubkey_x: &'a str,
-        #[serde(alias = "y")]
-        pub pubkey_y: &'a str,
-    }
+    use super::{Deserialize, Serialize};
 
     #[derive(Debug, Serialize, Deserialize)]
     #[serde(rename_all = "PascalCase")]
@@ -82,7 +67,7 @@ pub mod request {
         pub id: &'a str,
         pub device_type: &'a str,
         pub version: &'a str,
-        pub proof_key: ProofKey<'a>,
+        pub proof_key: Jwk,
     }
 
     #[derive(Debug, Serialize, Deserialize)]
@@ -123,7 +108,7 @@ pub mod request {
         pub sandbox: &'a str,
         pub site_name: &'a str,
         pub session_id: &'a str,
-        pub proof_key: ProofKey<'a>,
+        pub proof_key: Jwk,
     }
 
     #[derive(Debug, Serialize, Deserialize)]
@@ -156,6 +141,10 @@ pub mod request {
 }
 
 pub mod response {
+    use oauth2::{
+        basic::BasicTokenType, helpers, AccessToken, ExtraTokenFields, RefreshToken, Scope,
+    };
+
     use super::{Deserialize, HashMap, Serialize, SigningPolicy};
 
     #[derive(Debug, Serialize, Deserialize)]
@@ -248,13 +237,24 @@ pub mod response {
     }
 
     #[derive(Debug, Serialize, Deserialize)]
-    pub struct WindowsLiveTokenResponse {
-        pub token_type: String,
-        pub expires_in: i32,
-        pub scope: String,
-        pub access_token: String,
-        pub refresh_token: String,
+    pub struct WindowsLiveTokenResponse<EF: ExtraTokenFields> {
+        pub token_type: Option<BasicTokenType>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub expires_in: Option<u64>,
+        #[serde(rename = "scope")]
+        #[serde(deserialize_with = "helpers::deserialize_space_delimited_vec")]
+        #[serde(serialize_with = "helpers::serialize_space_delimited_vec")]
+        #[serde(skip_serializing_if = "Option::is_none")]
+        #[serde(default)]
+        pub scopes: Option<Vec<Scope>>,
+        pub access_token: AccessToken,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub refresh_token: Option<RefreshToken>,
         pub user_id: String,
+
+        #[serde(bound = "EF: ExtraTokenFields")]
+        #[serde(flatten)]
+        pub extra_fields: EF,
     }
 
     #[derive(Debug, Serialize, Deserialize)]

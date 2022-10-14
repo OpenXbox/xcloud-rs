@@ -1,2 +1,2 @@
 [workspace]
-members = ["xal", "smartglass", "gamestreaming_native", "gamestreaming_webrtc", "client", "pcap_parser", "teredo"]
+members = ["xal", "smartglass", "gamestreaming_native", "gamestreaming_webrtc", "client", "pcap_parser", "teredo", "auth_webview"]

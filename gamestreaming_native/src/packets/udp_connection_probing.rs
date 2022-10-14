@@ -1,9 +1,9 @@
+use byteorder::*;
 use std::convert::{From, Into, TryFrom, TryInto};
 use std::io;
-use std::io::{Read, Write, Seek, SeekFrom, Cursor};
-use byteorder::*;
+use std::io::{Cursor, Read, Seek, SeekFrom, Write};
 
-use super::serializing::{Serialize, Deserialize};
+use super::serializing::{Deserialize, Serialize};
 
 type Error = Box<dyn std::error::Error>;
 type Result<T> = std::result::Result<T, Error>;
@@ -11,21 +11,20 @@ type Result<T> = std::result::Result<T, Error>;
 #[derive(Debug, Clone, PartialEq)]
 pub struct ConnectionProbingSyn {
     pub msg_type: ConnectionProbingType,
-    pub probe_data: Vec<u8>
+    pub probe_data: Vec<u8>,
 }
 
 impl Deserialize for ConnectionProbingSyn {
-    fn deserialize<T: Read + Seek>(reader: &mut T) -> Result<Self>
-    {
+    fn deserialize<T: Read + Seek>(reader: &mut T) -> Result<Self> {
         let msg_type = reader.read_u16::<LittleEndian>()?.try_into()?;
         assert_eq!(msg_type, ConnectionProbingType::Syn);
-        
+
         let mut probe_data = vec![];
         let _ = reader.read_to_end(&mut probe_data)?;
 
         Ok(Self {
             msg_type,
-            probe_data
+            probe_data,
         })
     }
 }
@@ -34,7 +33,7 @@ impl Deserialize for ConnectionProbingSyn {
 pub struct ConnectionProbingAck {
     pub msg_type: ConnectionProbingType,
     pub accepted_packet_size: u16,
-    pub appendix: u16
+    pub appendix: u16,
 }
 
 impl Deserialize for ConnectionProbingAck {
@@ -48,7 +47,7 @@ impl Deserialize for ConnectionProbingAck {
         Ok(Self {
             msg_type,
             accepted_packet_size,
-            appendix
+            appendix,
         })
     }
 }
@@ -71,7 +70,7 @@ impl From<u16> for ConnectionProbingType {
 #[derive(Debug, Clone, PartialEq)]
 pub enum ConnectionProbingPacket {
     Syn(ConnectionProbingSyn),
-    Ack(ConnectionProbingAck)
+    Ack(ConnectionProbingAck),
 }
 
 impl Deserialize for ConnectionProbingPacket {
@@ -84,7 +83,7 @@ impl Deserialize for ConnectionProbingPacket {
         let packet = match msg_type {
             ConnectionProbingType::Syn => {
                 ConnectionProbingPacket::Syn(ConnectionProbingSyn::deserialize(reader)?)
-            },
+            }
             ConnectionProbingType::Ack => {
                 ConnectionProbingPacket::Ack(ConnectionProbingAck::deserialize(reader)?)
             }
@@ -103,8 +102,7 @@ mod test {
         let buf: Vec<u8> = vec![1, 0, 2, 3, 4, 5, 6];
         let mut reader = Cursor::new(&buf);
 
-        let parsed = ConnectionProbingSyn::deserialize(&mut reader)
-            .expect("Failed to deserialize");
+        let parsed = ConnectionProbingSyn::deserialize(&mut reader).expect("Failed to deserialize");
 
         assert_eq!(parsed.msg_type, ConnectionProbingType::Syn);
         assert_eq!(parsed.probe_data.len(), 5);
@@ -115,8 +113,7 @@ mod test {
         let buf: Vec<u8> = vec![2, 0, 5, 0, 0, 0];
         let mut reader = Cursor::new(&buf);
 
-        let parsed = ConnectionProbingAck::deserialize(&mut reader)
-            .expect("Failed to deserialize");
+        let parsed = ConnectionProbingAck::deserialize(&mut reader).expect("Failed to deserialize");
 
         assert_eq!(parsed.msg_type, ConnectionProbingType::Ack);
         assert_eq!(parsed.accepted_packet_size, 5);
@@ -128,16 +125,18 @@ mod test {
         let buf: Vec<u8> = vec![2, 0, 5, 0, 0, 0];
         let mut reader = Cursor::new(&buf);
 
-        let parsed = ConnectionProbingPacket::deserialize(&mut reader)
-            .expect("Failed to deserialize");
+        let parsed =
+            ConnectionProbingPacket::deserialize(&mut reader).expect("Failed to deserialize");
 
         match parsed {
             ConnectionProbingPacket::Ack(packet) => {
                 assert_eq!(packet.msg_type, ConnectionProbingType::Ack);
                 assert_eq!(packet.accepted_packet_size, 5);
                 assert_eq!(packet.appendix, 0);
-            },
-            _ => { panic!("Failed") }
+            }
+            _ => {
+                panic!("Failed")
+            }
         }
     }
 }

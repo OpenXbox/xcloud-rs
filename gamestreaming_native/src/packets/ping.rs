@@ -1,7 +1,13 @@
-use std::{convert::{TryInto, From}, io::{Read, Seek, Write}};
 use byteorder::*;
+use std::{
+    convert::{From, TryInto},
+    io::{Read, Seek, Write},
+};
 
-use crate::{crypto::{OneShotHasher, MsSrtpCryptoContext}, packets::serializing::{Deserialize, Serialize}};
+use crate::{
+    crypto::{MsSrtpCryptoContext, OneShotHasher},
+    packets::serializing::{Deserialize, Serialize},
+};
 
 use hmac::{Hmac, Mac};
 use sha2::Sha256;
@@ -14,7 +20,7 @@ pub struct PingPayload {
     pub ping_type: u8,
     pub flags: u8,
     pub sequence_num: u32,
-    pub signature: Vec<u8>
+    pub signature: Vec<u8>,
 }
 
 impl PingPayload {
@@ -23,8 +29,9 @@ impl PingPayload {
             ping_type: 0x01,
             flags: 0x00,
             sequence_num: sequence,
-            signature: signing_context.hash_oneshot(&sequence.to_le_bytes())
-                            .expect("Failed to sign")
+            signature: signing_context
+                .hash_oneshot(&sequence.to_le_bytes())
+                .expect("Failed to sign"),
         }
     }
 
@@ -33,8 +40,9 @@ impl PingPayload {
             ping_type: 0x01,
             flags: 0xFF,
             sequence_num: sequence,
-            signature: signing_context.hash_oneshot(&sequence.to_le_bytes())
-                            .expect("Failed to sign")
+            signature: signing_context
+                .hash_oneshot(&sequence.to_le_bytes())
+                .expect("Failed to sign"),
         }
     }
 
@@ -44,7 +52,7 @@ impl PingPayload {
 
         let result = signing_context.verify(&self.signature)
             .expect("Signature verification failed");
-        
+
         Ok(result)
     }
      */
@@ -63,7 +71,7 @@ impl Deserialize for PingPayload {
             ping_type,
             flags,
             sequence_num,
-            signature
+            signature,
         })
     }
 }
@@ -71,7 +79,7 @@ impl Deserialize for PingPayload {
 #[derive(Debug, Clone, PartialEq)]
 pub enum PingPacket {
     Request(PingPayload),
-    Response(PingPayload)
+    Response(PingPayload),
 }
 
 impl Deserialize for PingPacket {
@@ -81,9 +89,7 @@ impl Deserialize for PingPacket {
         match body.flags {
             0x00 => Ok(PingPacket::Request(body)),
             0xFF => Ok(PingPacket::Response(body)),
-            _ => {
-                Err(format!("PingBody with unhandled flags: {:?}", body.flags))?
-            }
+            _ => Err(format!("PingBody with unhandled flags: {:?}", body.flags))?,
         }
     }
 }
@@ -91,38 +97,44 @@ impl Deserialize for PingPacket {
 #[cfg(test)]
 mod test {
     use super::*;
-    use std::io::Cursor;
     use hex;
+    use std::io::Cursor;
 
     #[test]
     fn deserialize_ping_packet() {
-        let packet_data = hex::decode("ffff010000000000d0c87bfa07d4e7fc9909d96e3cb3977d5232bbb391932236d56411f82d103bd5")
-            .expect("Failed to hex-decode ping packet");
+        let packet_data = hex::decode(
+            "ffff010000000000d0c87bfa07d4e7fc9909d96e3cb3977d5232bbb391932236d56411f82d103bd5",
+        )
+        .expect("Failed to hex-decode ping packet");
 
         let ctx = MsSrtpCryptoContext::from_base64("19J859/D70mZNfu9tEUdxgUVVMbRDkV/L2LavviX")
             .expect("Failed to create MS-SRTP context");
-        
+
         // First two bytes of the udp payload is salt / connection id
-        let ping_signing_ctx = ctx.get_ping_signing_ctx(&packet_data[..2])
+        let ping_signing_ctx = ctx
+            .get_ping_signing_ctx(&packet_data[..2])
             .expect("Failed to get ping signing context");
-        
+
         // Udp payload + 2 is ping packet/payload
         let mut reader = Cursor::new(&packet_data[2..]);
-        let packet = PingPacket::deserialize(&mut reader)
-            .expect("Failed to deserialize Ping packet");
-        
+        let packet =
+            PingPacket::deserialize(&mut reader).expect("Failed to deserialize Ping packet");
+
         match packet {
             PingPacket::Request(request) => {
                 assert_eq!(request.ping_type, 0x01);
                 assert_eq!(request.flags, 0x00);
                 assert_eq!(request.sequence_num, 0x0);
-                assert_eq!(&hex::encode(&request.signature), "d0c87bfa07d4e7fc9909d96e3cb3977d5232bbb391932236d56411f82d103bd5");
+                assert_eq!(
+                    &hex::encode(&request.signature),
+                    "d0c87bfa07d4e7fc9909d96e3cb3977d5232bbb391932236d56411f82d103bd5"
+                );
 
                 /*
                 request.is_signature_valid(ping_signing_ctx.clone())
                     .expect("Test Signature verification failed");
                  */
-            },
+            }
             _ => {
                 panic!("Deserialized into invalid ping packet")
             }
@@ -133,15 +145,18 @@ mod test {
     fn init_ping_body() {
         let ctx = MsSrtpCryptoContext::from_base64("19J859/D70mZNfu9tEUdxgUVVMbRDkV/L2LavviX")
             .expect("Failed to create MS-SRTP context");
-        
-        let salt = &hex::decode("ffff")
-            .expect("Failed to hex-decode salt");
 
-        let mut ping_signing_ctx = ctx.get_ping_signing_ctx(&salt)
+        let salt = &hex::decode("ffff").expect("Failed to hex-decode salt");
+
+        let mut ping_signing_ctx = ctx
+            .get_ping_signing_ctx(&salt)
             .expect("Failed to get ping signing context");
 
         let body = PingPayload::new_request(0, &mut ping_signing_ctx);
 
-        assert_eq!(hex::encode(&body.signature), "d0c87bfa07d4e7fc9909d96e3cb3977d5232bbb391932236d56411f82d103bd5");
+        assert_eq!(
+            hex::encode(&body.signature),
+            "d0c87bfa07d4e7fc9909d96e3cb3977d5232bbb391932236d56411f82d103bd5"
+        );
     }
 }

@@ -10,7 +10,7 @@ pub enum AudioPacketType {
 pub enum AudioCodec {
     Opus = 0,
     PCM = 1,
-    AAC = 2
+    AAC = 2,
 }
 
 bitflags! {
@@ -22,8 +22,7 @@ bitflags! {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum AudioDataFlags {
-}
+pub enum AudioDataFlags {}
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct PCMAudioFormat {
@@ -44,13 +43,13 @@ pub struct AudioServerHandshake {
     pub protocol_version: u32,
     pub reference_timestamp: u64,
     pub format_count: u32,
-    pub formats: Box<[AudioFormat]>
+    pub formats: Box<[AudioFormat]>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct AudioClientHandshake {
     pub initial_frame_id: u32,
-    pub requested_format: AudioFormat
+    pub requested_format: AudioFormat,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -64,7 +63,7 @@ pub struct AudioData {
     pub frame_id: u32,
     pub timestamp: u64,
     pub data_size: u32,
-    pub data: Vec<u8>
+    pub data: Vec<u8>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -72,5 +71,5 @@ pub enum AudioPacket {
     ServerHandshake(AudioServerHandshake),
     ClientHandshake(AudioClientHandshake),
     Control(AudioControl),
-    Data(AudioData)
+    Data(AudioData),
 }

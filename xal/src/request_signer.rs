@@ -1,12 +1,12 @@
 use super::filetime::FileTime;
-use super::{models, models::request};
+use super::models;
 use base64;
 use chrono::prelude::*;
-use ecdsa;
 use josekit;
-use reqwest;
+use josekit::jwk::alg::ec::EcKeyPair;
+use josekit::jwk::Jwk;
+use reqwest::{self};
 use sha2::{Digest, Sha256};
-use std::convert::TryInto;
 use std::option::Option;
 use url::Position;
 
@@ -63,42 +63,49 @@ pub struct HttpRequestToSign<'a> {
 
 #[derive(Debug)]
 pub struct RequestSigner {
-    pub signing_key_pem: String,
+    pub keypair: EcKeyPair,
     pub signing_policy: models::SigningPolicy,
 }
 
+impl Default for RequestSigner {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl RequestSigner {
-    pub fn generate_key() -> String {
-        "<INVALID PEM>".to_owned()
+    pub fn new() -> Self {
+        Self {
+            keypair: josekit::jws::ES256.generate_key_pair().unwrap(),
+            signing_policy: models::SigningPolicy::default(),
+        }
     }
 
-    pub fn get_proof_key(&self) -> request::ProofKey {
-        request::ProofKey {
-            usage: "sig",
-            algorithm: "ES256",
-            key_type: "EC",
-            curve: "P-256",
-            pubkey_x: "",
-            pubkey_y: "",
-        }
+    pub fn get_proof_key(&self) -> Jwk {
+        let mut jwk = self.keypair.to_jwk_public_key();
+        jwk.set_key_use("sig");
+
+        jwk
     }
 
     pub fn sign_request(
         &self,
-        request: &mut reqwest::Request,
+        request: reqwest::Request,
         timestamp: Option<DateTime<Utc>>,
-    ) -> Result<()> {
+    ) -> Result<reqwest::Request> {
         let url = request.url();
 
+        let auth_header_val = match request.headers().get(reqwest::header::AUTHORIZATION) {
+            Some(val) => val.to_str(),
+            None => Ok(""),
+        }?;
+
+        let body = request.body().unwrap().as_bytes().unwrap();
         let to_sign = HttpRequestToSign {
             method: &request.method().to_string().to_uppercase(),
             path_and_query: &url[Position::BeforePath..],
-            authorization: request
-                .headers()
-                .get(reqwest::header::AUTHORIZATION)
-                .unwrap()
-                .to_str()?,
-            body: request.body().unwrap().as_bytes().unwrap(),
+            authorization: auth_header_val,
+            body: body,
         };
 
         let signature = self
@@ -109,11 +116,15 @@ impl RequestSigner {
             )
             .expect("Signing request failed!");
 
-        request
+        let mut clone_request = request.try_clone().unwrap();
+
+        clone_request.body_mut().replace(body.to_vec().into());
+
+        clone_request
             .headers_mut()
             .insert("Signature", signature.as_base64().parse()?);
 
-        Ok(())
+        Ok(clone_request)
     }
 
     /// Sign
@@ -142,7 +153,7 @@ impl RequestSigner {
         authorization: String,
         body: &[u8],
     ) -> Result<XboxWebSignatureBytes> {
-        let signer = josekit::jws::ES256.signer_from_pem(&self.signing_key_pem)?;
+        let signer = josekit::jws::ES256.signer_from_jwk(&self.keypair.to_jwk_private_key())?;
 
         let filetime_bytes = timestamp.to_filetime().to_be_bytes();
         let signing_policy_version_bytes = signing_policy_version.to_be_bytes();
@@ -159,12 +170,8 @@ impl RequestSigner {
             )
             .expect("Failed to assemble message data !");
 
-        // Hash the data to be signed
-        let digest = RequestSigner::digest(message)?;
-
-        // Sign the digest (RFC6979)
-        // FIXME: Sign the digest only.. need to find another lib that supports it...
-        let signed_digest: Vec<u8> = signer.sign(&digest.0)?;
+        // Sign the message
+        let signed_digest: Vec<u8> = signer.sign(&message.0)?;
 
         // Return final signature
         Ok(XboxWebSignatureBytes {
@@ -214,11 +221,6 @@ impl RequestSigner {
 
         Ok(XboxPlaintextMessageToHash(data))
     }
-
-    fn digest(message: XboxPlaintextMessageToHash) -> Result<XboxDigestToSign> {
-        let digest = Sha256::digest(&message.0).to_vec();
-        return Ok(XboxDigestToSign(digest));
-    }
 }
 
 #[cfg(test)]
@@ -235,13 +237,15 @@ mod test {
 
     fn get_request_signer() -> RequestSigner {
         RequestSigner {
-            signing_key_pem: PRIVATE_KEY_PEM.to_owned(),
+            keypair: josekit::jws::ES256
+                .key_pair_from_pem(PRIVATE_KEY_PEM)
+                .unwrap(),
             signing_policy: Default::default(),
         }
     }
 
     #[test]
-    #[ignore]
+    #[ignore = "Enable again when RFC6979 (deterministic signing) is implemented"]
     fn sign() {
         let signer = get_request_signer();
 
@@ -286,33 +290,7 @@ mod test {
     }
 
     #[test]
-    fn hash() {
-        let signer = get_request_signer();
-        let signing_policy_version: i32 = 1;
-        let ts_bytes = Utc.timestamp(1586999965, 0).to_filetime().to_be_bytes();
-
-        let message_data = signer
-            .assemble_message_data(
-                &signing_policy_version.to_be_bytes(),
-                &ts_bytes,
-                "POST".to_owned(),
-                "/path?query=1".to_owned(),
-                "XBL3.0 x=userid;jsonwebtoken".to_owned(),
-                "thebodygoeshere".as_bytes(),
-                8192,
-            )
-            .unwrap();
-
-        let digest = RequestSigner::digest(message_data).expect("Failed to hash message");
-
-        assert_eq!(
-            digest.0,
-            hex!("f7d61b6f8d4dcd86da1aa8553f0ee7c15450811e7cd2759364e22f67d853ff50")
-        );
-    }
-
-    #[test]
-    #[ignore]
+    #[ignore = "Enable again when RFC6979 (deterministic signing) is implemented"]
     fn sign_reqwest() {
         let signer = get_request_signer();
         let timestamp = Utc.timestamp(1586999965, 0);
@@ -329,8 +307,8 @@ mod test {
             .build()
             .unwrap();
 
-        signer
-            .sign_request(&mut request, Some(timestamp))
+        request = signer
+            .sign_request(request, Some(timestamp))
             .expect("FAILED signing request");
 
         let signature = request.headers().get("Signature");

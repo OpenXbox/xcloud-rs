@@ -1,13 +1,12 @@
+use byteorder::*;
 use std::convert::{From, Into, TryFrom, TryInto};
 use std::io;
-use std::io::{Read, Write, Seek, SeekFrom, Cursor};
-use byteorder::*;
+use std::io::{Cursor, Read, Seek, SeekFrom, Write};
 
-use super::serializing::{Serialize, Deserialize};
+use super::serializing::{Deserialize, Serialize};
 
 type Error = Box<dyn std::error::Error>;
 type Result<T> = std::result::Result<T, Error>;
-
 
 /*
 RTP: MuxDCTControl Seq: 5, ts: 0, ssrc: 1024
@@ -51,7 +50,7 @@ RTP: MuxDCTControl Seq: 11, ts: 0, ssrc: 1026
 pub enum ControlProtocolPacketType {
     Create = 2,
     Open = 3,
-    Close = 4
+    Close = 4,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -59,12 +58,11 @@ pub struct MuxDCTControlHeader {
     pub bla: u16,
     pub bla2: u16,
     pub woop: u16,
-    pub woop2: u16
+    pub woop2: u16,
 }
 
 impl Deserialize for MuxDCTControlHeader {
-    fn deserialize<T: Read + Seek>(reader: &mut T) -> Result<Self>
-    {
+    fn deserialize<T: Read + Seek>(reader: &mut T) -> Result<Self> {
         let bla = reader.read_u16::<LittleEndian>()?;
         let bla2 = reader.read_u16::<LittleEndian>()?;
         let woop = reader.read_u16::<LittleEndian>()?;
@@ -74,19 +72,19 @@ impl Deserialize for MuxDCTControlHeader {
             bla,
             bla2,
             woop,
-            woop2
+            woop2,
         })
     }
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum MuxDCTControlPacket {
-    JustHeader(MuxDCTControlHeader)
+    JustHeader(MuxDCTControlHeader),
 }
 
 impl Deserialize for MuxDCTControlPacket {
     fn deserialize<T: Read + Seek>(reader: &mut T) -> Result<Self> {
-        let header = MuxDCTControlHeader::deserialize(reader)?; 
+        let header = MuxDCTControlHeader::deserialize(reader)?;
 
         Ok(MuxDCTControlPacket::JustHeader(header))
     }

@@ -1,4 +1,4 @@
-use crate::packets::{audio, video, input, qos};
+use crate::packets::{audio, input, qos, video};
 
 /// Following channel classes exist:
 ///

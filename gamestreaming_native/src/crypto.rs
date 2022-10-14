@@ -1,28 +1,27 @@
+use hmac::{digest, Hmac, Mac};
+use pbkdf2::pbkdf2;
+use sha2::Sha256;
 use std::convert::TryInto;
+use webrtc::rtp::header::Header;
 /// Implementation of MS-SRTP
 /// Source: https://docs.microsoft.com/en-us/openspecs/office_protocols/ms-srtp/bf622cc1-9fb5-4fa2-b18d-239a84dcca65
 ///
 /// SRTP requires that each endpoint in an SRTP session maintain cryptographic contexts. For more information, see
 /// [RFC3711] section 3.2.3. This protocol maintains cryptographic contexts differently from SRTP [RFC3711].
-/// 
+///
 /// This protocol maintains two cryptographic contexts per SRTP session:
-/// 
+///
 /// - One for all media streams on the send direction.
 /// - One for all media streams on the receive direction.
-/// 
+///
 /// This protocol supports multiple media streams sharing the same SRTP session. Each media stream MUST be uniquely
 /// identified by one Synchronization Source (SSRC). This protocol maintains per SSRC transform independent
 /// parameters in cryptographic contexts, as specified in section 3.1.3.2.
-/// 
+///
 /// When sending or receiving an SRTP packet, this protocol first uses the SRTP session and direction to identify
 /// the cryptographic context, then uses the SSRC in the packet to decide the per SSRC transform independent
 /// parameters in the cryptographic context.
-
-use webrtc::srtp::{protection_profile, context};
-use webrtc::rtp::header::Header;
-use pbkdf2::pbkdf2;
-use hmac::{digest, Hmac, Mac};
-use sha2::Sha256;
+use webrtc::srtp::{context, protection_profile};
 
 type Error = Box<dyn std::error::Error>;
 type Result<T> = std::result::Result<T, Error>;
@@ -44,7 +43,7 @@ pub struct MsSrtpCryptoContext {
     crypto_ctx_in: context::Context,
     crypto_ctx_out: context::Context,
     master_key: Vec<u8>,
-    master_salt: Vec<u8>
+    master_salt: Vec<u8>,
 }
 
 impl MsSrtpCryptoContext {
@@ -65,7 +64,7 @@ impl MsSrtpCryptoContext {
                 None,
             )?,
             master_key: master_key.to_vec(),
-            master_salt: master_salt.to_vec()
+            master_salt: master_salt.to_vec(),
         })
     }
 
@@ -73,25 +72,29 @@ impl MsSrtpCryptoContext {
         let master_bytes = base64::decode(master_bytes)?;
         Self::new(
             master_bytes[..16].try_into()?,
-            master_bytes[16..28].try_into()?
+            master_bytes[16..28].try_into()?,
         )
     }
 
-    fn derive_hmac_key<T>(master_key: &[u8], salt: &[u8], iterations: u32, key_out: &mut [u8]) -> Result<()>
-        where T: digest::Update + digest::FixedOutput + digest::Reset + Default + Clone
+    fn derive_hmac_key<T>(
+        master_key: &[u8],
+        salt: &[u8],
+        iterations: u32,
+        key_out: &mut [u8],
+    ) -> Result<()>
+    where
+        T: digest::Update + digest::FixedOutput + digest::Reset + Default + Clone,
     {
         pbkdf2::<Hmac<Sha256>>(master_key, salt, iterations, key_out);
 
         Ok(())
     }
 
-    fn get_keyed_hasher(hmac_key: &[u8]) -> Result<Hmac<Sha256>>
-    {
+    fn get_keyed_hasher(hmac_key: &[u8]) -> Result<Hmac<Sha256>> {
         Ok(hmac::Hmac::<Sha256>::new_from_slice(hmac_key)?)
     }
 
-    pub fn get_ping_signing_ctx(&self, salt: &[u8]) -> Result<Hmac<Sha256>>
-    {
+    pub fn get_ping_signing_ctx(&self, salt: &[u8]) -> Result<Hmac<Sha256>> {
         if salt.len() != 2 {
             Err("Salt has invalid length, expected 2 bytes")?
         }
@@ -101,7 +104,7 @@ impl MsSrtpCryptoContext {
             &self.master_key,
             salt,
             100000,
-            &mut hmac_key
+            &mut hmac_key,
         )?;
 
         Ok(MsSrtpCryptoContext::get_keyed_hasher(&hmac_key)?)
@@ -110,9 +113,12 @@ impl MsSrtpCryptoContext {
     pub fn decrypt_rtp_with_header(
         &mut self,
         encrypted: &[u8],
-        header: &Header
+        header: &Header,
     ) -> Result<Vec<u8>> {
-        Ok(self.crypto_ctx_out.decrypt_rtp_with_header(encrypted, header)?.to_vec())
+        Ok(self
+            .crypto_ctx_out
+            .decrypt_rtp_with_header(encrypted, header)?
+            .to_vec())
     }
 
     pub fn decrypt_rtp(&mut self, encrypted: &[u8]) -> Result<Vec<u8>> {
@@ -122,9 +128,12 @@ impl MsSrtpCryptoContext {
     pub fn encrypt_rtp_with_header(
         &mut self,
         plaintext: &[u8],
-        header: &Header
+        header: &Header,
     ) -> Result<Vec<u8>> {
-        Ok(self.crypto_ctx_out.encrypt_rtp_with_header(plaintext, header)?.to_vec())
+        Ok(self
+            .crypto_ctx_out
+            .encrypt_rtp_with_header(plaintext, header)?
+            .to_vec())
     }
 
     pub fn encrypt_rtp(&mut self, plaintext: &[u8]) -> Result<Vec<u8>> {
@@ -142,9 +151,9 @@ impl MsSrtpCryptoContext {
 
 #[cfg(test)]
 mod test {
+    use super::*;
     use hex;
     use hmac::Mac;
-    use super::*;
 
     pub const SRTP_KEY: &str = "RdHzuLLVGuO1aHILIEVJ1UzR7RWVioepmpy+9SRf";
 
@@ -157,51 +166,60 @@ mod test {
 
         assert_eq!(data.len(), 1364);
 
-        let decrypted = context.decrypt_rtp(data)
-            .expect("Failed to decrypt packet");
-        
+        let decrypted = context.decrypt_rtp(data).expect("Failed to decrypt packet");
+
         assert_eq!(decrypted.len(), 1348);
     }
 
     #[test]
     fn test_ping_key_derivation() {
-
         let mut hmac_key: [u8; 0x20] = [0; 0x20];
         MsSrtpCryptoContext::derive_hmac_key::<Sha256>(
             &hex::decode("d7d27ce7dfc3ef499935fbbdb4451dc6").unwrap(),
             &hex::decode("ffff").unwrap(),
             100000,
-            &mut hmac_key
-        ).expect("Failed to derive hmac key");
-        
-        assert_eq!(&hex::encode(hmac_key), "9dda3a76d9e73b41ad8b37881e9d5af973271573d2fd3783dd6650b9840afb94");
+            &mut hmac_key,
+        )
+        .expect("Failed to derive hmac key");
+
+        assert_eq!(
+            &hex::encode(hmac_key),
+            "9dda3a76d9e73b41ad8b37881e9d5af973271573d2fd3783dd6650b9840afb94"
+        );
     }
 
     #[test]
     fn test_keyed_hasher() {
-        let hmac_key = hex::decode("9dda3a76d9e73b41ad8b37881e9d5af973271573d2fd3783dd6650b9840afb94")
-            .expect("Failed to hexdecode hmac key");
-        let mut hasher = MsSrtpCryptoContext::get_keyed_hasher(&hmac_key)
-            .expect("Failed to derive HMAC");
-        
+        let hmac_key =
+            hex::decode("9dda3a76d9e73b41ad8b37881e9d5af973271573d2fd3783dd6650b9840afb94")
+                .expect("Failed to hexdecode hmac key");
+        let mut hasher =
+            MsSrtpCryptoContext::get_keyed_hasher(&hmac_key).expect("Failed to derive HMAC");
+
         hasher.update(&hex::decode("00000000").unwrap());
         let signature = &hasher.finalize().into_bytes()[..];
 
-        assert_eq!(&hex::encode(signature), "d0c87bfa07d4e7fc9909d96e3cb3977d5232bbb391932236d56411f82d103bd5");
+        assert_eq!(
+            &hex::encode(signature),
+            "d0c87bfa07d4e7fc9909d96e3cb3977d5232bbb391932236d56411f82d103bd5"
+        );
     }
 
     #[test]
     fn test_get_ping_key_context() {
         let ctx = MsSrtpCryptoContext::from_base64("19J859/D70mZNfu9tEUdxgUVVMbRDkV/L2LavviX")
             .expect("Failed to create MS-SRTP context");
-        
-        let mut ping_signing_ctx = ctx.get_ping_signing_ctx(&hex::decode("ffff").unwrap())
+
+        let mut ping_signing_ctx = ctx
+            .get_ping_signing_ctx(&hex::decode("ffff").unwrap())
             .expect("Failed to create ping signing context");
 
         ping_signing_ctx.update(&hex::decode("00000000").unwrap());
         let signature = &ping_signing_ctx.finalize().into_bytes()[..];
 
-        assert_eq!(&hex::encode(signature), "d0c87bfa07d4e7fc9909d96e3cb3977d5232bbb391932236d56411f82d103bd5");
+        assert_eq!(
+            &hex::encode(signature),
+            "d0c87bfa07d4e7fc9909d96e3cb3977d5232bbb391932236d56411f82d103bd5"
+        );
     }
-
 }

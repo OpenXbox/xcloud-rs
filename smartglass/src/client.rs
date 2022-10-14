@@ -18,10 +18,9 @@ pub struct SmartglassClient {
 }
 
 impl SmartglassClient {
-    fn new(
+    pub fn new(
         token: xal_models::response::XSTSResponse,
         session_id: Option<uuid::Uuid>,
-        signing_key_pem: Option<String>,
         user_agent: Option<String>,
     ) -> Result<Self> {
         let mut headers = reqwest::header::HeaderMap::new();
@@ -42,23 +41,22 @@ impl SmartglassClient {
 
         Ok(Self {
             session_id: session_id.unwrap_or(uuid::Uuid::new_v4()),
-            request_signer: request_signer::RequestSigner {
-                signing_key_pem: signing_key_pem
-                    .unwrap_or(request_signer::RequestSigner::generate_key()),
-                signing_policy: xal_models::SigningPolicy::default(),
-            },
+            request_signer: request_signer::RequestSigner::default(),
             ms_cv: vector_impl::CorrelationVector::default(),
             client: client,
         })
     }
 
-    pub async fn send_signed(&mut self, request: &mut reqwest::Request) -> Result<reqwest::Response> {
+    pub async fn send_signed(
+        &mut self,
+        request: &mut reqwest::Request,
+    ) -> Result<reqwest::Response> {
         let mut request = request.try_clone().unwrap();
 
         request
             .headers_mut()
             .insert("MS-CV", self.ms_cv.increment().parse()?);
-        self.request_signer.sign_request(&mut request, None)?;
+        request = self.request_signer.sign_request(request, None)?;
         Ok(self.client.execute(request).await?)
     }
 

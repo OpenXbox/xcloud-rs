@@ -1,4 +1,4 @@
-use std::io::{Read, Write, Seek};
+use std::io::{Read, Seek, Write};
 
 type Error = Box<dyn std::error::Error>;
 type Result<T> = std::result::Result<T, Error>;

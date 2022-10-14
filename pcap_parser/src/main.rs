@@ -1,25 +1,25 @@
-/// Based on libpnet sample: https://github.com/libpnet/libpnet/blob/master/examples/packetdump.rs
-use std::{io::BufReader, convert::TryInto};
-use std::path::PathBuf;
-use std::net::IpAddr;
-use std::fs::File;
-use std::io::prelude::*;
-use std::io::BufWriter;
-use std::io::Cursor;
-use gamestreaming_native::webrtc::util::Unmarshal;
-use structopt::StructOpt;
-use pcap::{Capture, Linktype, Savefile};
-use gamestreaming_native::pnet::util::MacAddr;
+use gamestreaming_native::crypto;
+use gamestreaming_native::packets;
 use gamestreaming_native::pnet::packet::ethernet::{EtherTypes, EthernetPacket};
 use gamestreaming_native::pnet::packet::ipv4::Ipv4Packet;
 use gamestreaming_native::pnet::packet::ipv6::Ipv6Packet;
 use gamestreaming_native::pnet::packet::udp::UdpPacket;
 use gamestreaming_native::pnet::packet::Packet;
-use gamestreaming_native::webrtc::stun;
-use gamestreaming_native::crypto;
-use gamestreaming_native::packets;
-use gamestreaming_native::webrtc::rtp;
+use gamestreaming_native::pnet::util::MacAddr;
 use gamestreaming_native::teredo::{Teredo, TeredoEndpoint};
+use gamestreaming_native::webrtc::rtp;
+use gamestreaming_native::webrtc::stun;
+use gamestreaming_native::webrtc::util::Unmarshal;
+use pcap::{Capture, Linktype, Savefile};
+use std::fs::File;
+use std::io::prelude::*;
+use std::io::BufWriter;
+use std::io::Cursor;
+use std::net::IpAddr;
+use std::path::PathBuf;
+/// Based on libpnet sample: https://github.com/libpnet/libpnet/blob/master/examples/packetdump.rs
+use std::{convert::TryInto, io::BufReader};
+use structopt::StructOpt;
 
 type Error = Box<dyn std::error::Error>;
 type Result<T> = std::result::Result<T, Error>;
@@ -33,14 +33,12 @@ struct RtpPacketResult {
 }
 
 struct PcapParser {
-    xbox_mac: Option<MacAddr>
+    xbox_mac: Option<MacAddr>,
 }
 
-impl PcapParser{
+impl PcapParser {
     pub fn new() -> Self {
-        Self {
-            xbox_mac: None
-        }
+        Self { xbox_mac: None }
     }
 
     fn handle_udp_packet(
@@ -48,7 +46,7 @@ impl PcapParser{
         source: (IpAddr, MacAddr),
         destination: (IpAddr, MacAddr),
         packet: &[u8],
-        teredo_wrapped: bool
+        teredo_wrapped: bool,
     ) -> Result<Vec<u8>> {
         if let Some(udp) = UdpPacket::new(packet) {
             let mut payload = udp.payload();
@@ -56,21 +54,18 @@ impl PcapParser{
             if stun::message::is_message(payload) {
                 let mut stun_msg = stun::message::Message::new();
                 stun_msg.raw = payload.to_vec();
-                if let Ok(_) = stun_msg.decode()
-                {   
+                if let Ok(_) = stun_msg.decode() {
                     println!("STUN Packet: {}", stun_msg);
                 } else {
                     println!("Malformed STUN packet");
                 }
-            }
-            else if payload[0] == 0x80 {
+            } else if payload[0] == 0x80 {
                 // let mut reader = BufReader::new(payload);
                 if let Ok(rtp_packet) = rtp::packet::Packet::unmarshal(&mut payload) {
                     if rtp_packet.header.version == 2 {
                         return Ok(payload.to_vec());
                     }
-                }
-                else {
+                } else {
                     println!(
                         "UDP Packet: {}:{} > {}:{}; length: {}",
                         source.0,
@@ -80,10 +75,8 @@ impl PcapParser{
                         udp.get_length()
                     );
                 }
-            }
-            else if let Some(teredo) = Ipv6Packet::new(payload) {
-                if teredo.is_teredo()
-                {
+            } else if let Some(teredo) = Ipv6Packet::new(payload) {
+                if teredo.is_teredo() {
                     let teredo_src: TeredoEndpoint = teredo.get_source().try_into()?;
                     let teredo_dst: TeredoEndpoint = teredo.get_destination().try_into()?;
 
@@ -95,7 +88,7 @@ impl PcapParser{
                         (IpAddr::V4(teredo_src.teredo_client_ipv4), source.1),
                         (IpAddr::V4(teredo_dst.teredo_client_ipv4), destination.1),
                         teredo.payload(),
-                        true
+                        true,
                     );
                 }
             }
@@ -107,8 +100,7 @@ impl PcapParser{
     fn is_client_direction(&self, source_mac: MacAddr) -> bool {
         if let Some(xbox_mac) = self.xbox_mac {
             xbox_mac == source_mac
-        }
-        else {
+        } else {
             false
         }
     }
@@ -126,20 +118,20 @@ impl PcapParser{
                         let payload = header.payload();
 
                         if let Ok(rtp_packet) = self.handle_udp_packet(
-                            (source_addr, source_mac), 
+                            (source_addr, source_mac),
                             (dest_addr, dest_mac),
                             payload,
-                            false
+                            false,
                         ) {
                             return Ok(RtpPacketResult {
                                 is_client: self.is_client_direction(source_mac),
-                                packet: rtp_packet
+                                packet: rtp_packet,
                             });
                         }
                     } else {
                         println!("Malformed IPv4 Packet");
                     }
-                },
+                }
                 EtherTypes::Ipv6 => {
                     if let Some(header) = Ipv6Packet::new(ethernet.payload()) {
                         let source_addr = IpAddr::V6(header.get_source());
@@ -150,20 +142,20 @@ impl PcapParser{
                         let payload = header.payload();
 
                         if let Ok(rtp_packet) = self.handle_udp_packet(
-                            (source_addr, source_mac), 
+                            (source_addr, source_mac),
                             (dest_addr, dest_mac),
                             payload,
-                            false
+                            false,
                         ) {
                             return Ok(RtpPacketResult {
                                 is_client: self.is_client_direction(source_mac),
-                                packet: rtp_packet
+                                packet: rtp_packet,
                             });
                         }
                     } else {
                         println!("Malformed IPv6 Packet");
                     }
-                },
+                }
                 _ => println!(
                     "Unhandled packet: {} > {}; ethertype: {:?} length: {}",
                     ethernet.get_source(),
@@ -180,9 +172,11 @@ impl PcapParser{
     }
 }
 
-
 #[derive(Debug, StructOpt)]
-#[structopt(name = "XCloud pcap parser", about = "Parses pcap/-ng files for analysis.")]
+#[structopt(
+    name = "XCloud pcap parser",
+    about = "Parses pcap/-ng files for analysis."
+)]
 struct Opt {
     /// Enable debug output
     #[structopt(short, long)]
@@ -205,9 +199,8 @@ fn main() {
 
     println!("Using SRTP key: {:?}", opt.srtp_key);
     println!("PCAP Decrypt path: {:?}", opt.decrypt_pcap);
-    
-    let mut cap = Capture::from_file(opt.input_file)
-        .expect("Failed to open input file");
+
+    let mut cap = Capture::from_file(opt.input_file).expect("Failed to open input file");
 
     let mut parser = PcapParser::new();
 
@@ -215,28 +208,28 @@ fn main() {
     // If no key is provided, use dummy key
     let mut crypto_context: crypto::MsSrtpCryptoContext = {
         if let Some(key) = opt.srtp_key {
-            crypto::MsSrtpCryptoContext::from_base64(&key)
-                .expect("Failed to init crypto context")
+            crypto::MsSrtpCryptoContext::from_base64(&key).expect("Failed to init crypto context")
         } else {
             let dummy_key = "RdHzuLLVGuO1aHILIEVJ1UzR7RWVioepmpy+9SRf";
-            crypto::MsSrtpCryptoContext::from_base64(&dummy_key).ok()
+            crypto::MsSrtpCryptoContext::from_base64(&dummy_key)
+                .ok()
                 .expect("Failed to init dummy crypto context")
         }
     };
 
     // Only used for writing decrypted pcap
-    let capture_out = Capture::dead(Linktype::ETHERNET)
-        .expect("Failed to create pcap OUT handle");
+    let capture_out = Capture::dead(Linktype::ETHERNET).expect("Failed to create pcap OUT handle");
 
     // Open handle for writing decrypted pcap
     let mut pcap_out_handle = match opt.decrypt_pcap {
         Some(filepath) => {
-            let savefile = capture_out.savefile(filepath)
+            let savefile = capture_out
+                .savefile(filepath)
                 .expect("Failed to create Savefile pcap OUT instance");
 
             Some(savefile)
-        },
-        None => None
+        }
+        None => None,
     };
 
     while let Ok(pcap_packet) = cap.next_packet() {
@@ -249,27 +242,30 @@ fn main() {
                 if rtp_response.is_client {
                     // println!("CLIENT -> XBOX");
                     crypto_context.decrypt_rtp(&packet)
-                }
-                else {
+                } else {
                     // println!("XBOX -> CLIENT");
                     crypto_context.decrypt_rtp_as_host(&packet)
                 }
-            }.expect("Failed to decrypt RTP");
+            }
+            .expect("Failed to decrypt RTP");
 
             match pcap_out_handle.as_mut() {
                 Some(savefile) => {
                     // Assemble plaintext packet payload
-                    let datasize_until_ciphertext = pcap_packet.data.len() - (plaintext.len() + AUTH_TAG_LEN);
-                    
+                    let datasize_until_ciphertext =
+                        pcap_packet.data.len() - (plaintext.len() + AUTH_TAG_LEN);
+
                     let mut plaintext_eth_data: Vec<u8> = vec![];
-                    plaintext_eth_data.write(&pcap_packet.data[..datasize_until_ciphertext])
+                    plaintext_eth_data
+                        .write(&pcap_packet.data[..datasize_until_ciphertext])
                         .expect("Failed to write packet data until ciphertext");
-                    plaintext_eth_data.write(&plaintext)
+                    plaintext_eth_data
+                        .write(&plaintext)
                         .expect("Failed to write decrypted ciphertext portion");
 
                     // Save decrypted RTP packet to pcap out
                     savefile.write(&pcap::Packet::new(&pcap_packet.header, &plaintext_eth_data));
-                },
+                }
                 None => {
                     let mut payload = &packet[..];
                     // Parse & print packet info
@@ -281,10 +277,8 @@ fn main() {
         } else {
             // Write non-RTP packet as-is
             match pcap_out_handle.as_mut() {
-                Some(savefile) => {
-                    savefile.write(&pcap_packet)
-                },
-                None => {},
+                Some(savefile) => savefile.write(&pcap_packet),
+                None => {}
             }
         }
     }

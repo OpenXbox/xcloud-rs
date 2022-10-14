@@ -1,12 +1,13 @@
 [package]
-name = "client"
+name = "auth_webview"
 version = "0.1.0"
-authors = ["tuxuser <462620+tuxuser@users.noreply.github.com>"]
-edition = "2018"
+edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-oauth2 = "4.2.3"
-tokio = { version = "1.21.2", features = ["full"]}
+tauri = "1.1.1"
+wry = "0.21.1"
+# futures = "0.3"
 xal = { path = "../xal" }
+# tokio = { version = "1.21.2", features = ["full"] }
