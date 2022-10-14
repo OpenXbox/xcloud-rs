@@ -147,21 +147,6 @@ impl XalAuthenticator {
         self.ms_cv.to_string()
     }
 
-    async fn call_oauth20_token_endpoint<T>(&mut self, json_body: T) -> Result<reqwest::Response>
-    where
-        T: Serialize,
-    {
-        let resp = self
-            .client
-            .post("https://login.live.com/oauth20_token.srf")
-            .header("MS-CV", "")
-            .json(&json_body)
-            .send()
-            .await?;
-
-        Ok(resp)
-    }
-
     pub async fn exchange_code_for_token(
         &mut self,
         authorization_code: &str,
@@ -182,18 +167,28 @@ impl XalAuthenticator {
     pub async fn exchange_refresh_token_for_xcloud_transfer_token(
         &mut self,
         refresh_token: &RefreshToken,
-    ) -> Result<SpecialTokenResponse> {
-        let token = self
-            .client2
-            .exchange_refresh_token(refresh_token)
-            .add_scope(Scope::new(
-                "service::http://Passport.NET/purpose::PURPOSE_XBOX_CLOUD_CONSOLE_TRANSFER_TOKEN"
-                    .into(),
-            ))
-            .request_async(async_http_client)
+    ) -> Result<response::XCloudTokenResponse> {
+        let json_body = request::WindowsLiveTokenRequest {
+            client_id: self.client_params.app_id,
+            grant_type: "refresh_token",
+            scope:
+                "service::http://Passport.NET/purpose::PURPOSE_XBOX_CLOUD_CONSOLE_TRANSFER_TOKEN",
+            refresh_token: Some(refresh_token.secret()),
+            code: None,
+            code_verifier: None,
+            redirect_uri: None,
+        };
+
+        let resp = self.client
+            .post("https://login.live.com/oauth20_token.srf")
+            .header("MS-CV", self.next_cv())
+            .form(&json_body)
+            .send()
             .await?;
 
-        Ok(token)
+        let text = resp.text().await?;
+        println!("XTOKEN Response: {:?}", text);
+        Ok(serde_json::from_str(&text)?)
     }
 
     pub async fn refresh_token(
