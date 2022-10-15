@@ -1,15 +1,14 @@
-use std::{fmt::Display, str::FromStr, string::ParseError};
-
-use reqwest::{
-    header, header::HeaderMap, Client, ClientBuilder, IntoUrl, Request, Response, StatusCode, Url,
-};
+use reqwest::{header, header::HeaderMap, Client, ClientBuilder, Response, StatusCode, Url};
 use serde::{Deserialize, Serialize};
+use serde_json;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum GssvApiError {
     #[error(transparent)]
     HttpError(#[from] reqwest::Error),
+    #[error(transparent)]
+    Serialization(#[from] serde_json::error::Error),
     #[error("Unknown error")]
     Unknown,
 }
@@ -18,10 +17,11 @@ pub enum GssvApiError {
 struct GssvApi {
     client: Client,
     base_url: Url,
+    platform: &'static str,
 }
 
 impl GssvApi {
-    pub fn new(base_url: Url, gssv_token: &str) -> Self {
+    fn new(base_url: Url, gssv_token: &str, platform: &'static str) -> Self {
         let mut headers = header::HeaderMap::new();
 
         let mut auth_value = header::HeaderValue::from_str(&format!("Bearer {}", gssv_token))
@@ -35,6 +35,7 @@ impl GssvApi {
                 .build()
                 .expect("Failed to build client"),
             base_url: base_url,
+            platform: platform,
         }
     }
 
@@ -44,14 +45,20 @@ impl GssvApi {
         token: &str,
     ) -> Result<LoginResponse, GssvApiError> {
         let mut headers = HeaderMap::new();
-        headers.insert("x-gssv-client", "XboxComBrowser".parse()?);
+        headers.insert(
+            "x-gssv-client",
+            "XboxComBrowser"
+                .parse()
+                .map_err(|_| GssvApiError::Unknown)?,
+        );
 
         let client = reqwest::Client::new();
-        client.post(login_url)
+        client
+            .post(login_url)
             .headers(headers)
             .json(&LoginRequest {
                 token: token,
-                offering_id: "xhome",
+                offering_id: offering_id,
             })
             .send()
             .await
@@ -61,22 +68,34 @@ impl GssvApi {
             .map_err(GssvApiError::HttpError)
     }
 
-    pub async fn login_xhome(token: &str) -> Result<LoginResponse, GssvApiError> {
-        GssvApi::login(
+    pub async fn login_xhome(token: &str) -> Result<Self, GssvApiError> {
+        let resp = GssvApi::login(
             "https://xhome.gssv-play-prod.xboxlive.com/v2/login/user",
             "xhome",
             token,
         )
-        .await
+        .await?;
+
+        Ok(Self::new(
+            Url::parse(&resp.offering_settings.regions.first().unwrap().base_uri).unwrap(),
+            &resp.offering_settings.gs_token,
+            "home",
+        ))
     }
 
-    pub async fn login_xcloud(token: &str) -> Result<LoginResponse, GssvApiError> {
-        GssvApi::login(
+    pub async fn login_xcloud(token: &str) -> Result<Self, GssvApiError> {
+        let resp = GssvApi::login(
             "https://xgpuweb.gssv-play-prod.xboxlive.com/v2/login/user",
             "xgpuweb",
             token,
         )
-        .await
+        .await?;
+
+        Ok(Self::new(
+            Url::parse(&resp.offering_settings.regions.first().unwrap().base_uri).unwrap(),
+            &resp.offering_settings.gs_token,
+            "xcloud",
+        ))
     }
 
     fn url(&self, path: &str) -> Url {
@@ -117,23 +136,23 @@ impl GssvApi {
         let device_info = DeviceInfo {
             app_info: AppInfo {
                 env: AppEnvironment {
-                    client_app_id: "Microsoft.GamingApp",
-                    client_app_type: "native",
-                    client_app_version: "2203.1001.4.0",
-                    client_sdk_version: "5.3.0",
-                    http_environment: "prod",
-                    sdk_install_id: "",
+                    client_app_id: "Microsoft.GamingApp".into(),
+                    client_app_type: "native".into(),
+                    client_app_version: "2203.1001.4.0".into(),
+                    client_sdk_version: "5.3.0".into(),
+                    http_environment: "prod".into(),
+                    sdk_install_id: "".into(),
                 },
             },
             dev: DevInfo {
                 hw: DevHardwareInfo {
-                    make: "Micro-Star International Co., Ltd.",
-                    model: "GS66 Stealth 10SGS",
-                    sdk_type: "native",
+                    make: "Micro-Star International Co., Ltd.".into(),
+                    model: "GS66 Stealth 10SGS".into(),
+                    sdk_type: "native".into(),
                 },
                 os: DevOsInfo {
-                    name: "Windows 10 Pro",
-                    ver: "19041.1.amd64fre.vb_release.191206-1406",
+                    name: "Windows 10 Pro".into(),
+                    ver: "19041.1.amd64fre.vb_release.191206-1406".into(),
                 },
                 display_info: DevDisplayInfo {
                     dimensions: DevDisplayDimensions {
@@ -145,12 +164,21 @@ impl GssvApi {
             },
         };
 
+        let devinfo_str =
+            serde_json::to_string(&device_info).map_err(GssvApiError::Serialization)?;
+
         let mut headers = HeaderMap::new();
-        headers.insert("X-MS-Device-Info", device_info.parse()?);
-        headers.insert("User-Agent", device_info.parse()?);
+        headers.insert(
+            "X-MS-Device-Info",
+            devinfo_str.parse().map_err(|_| GssvApiError::Unknown)?,
+        );
+        headers.insert(
+            "User-Agent",
+            devinfo_str.parse().map_err(|_| GssvApiError::Unknown)?,
+        );
 
         self.client
-            .post(self.url("/v5/sessions/home/play"))
+            .post(self.url(&format!("/v5/sessions/{}/play", self.platform)))
             .json(&GssvSessionConfig {
                 title_id: "",
                 system_update_group: "",
@@ -228,7 +256,7 @@ impl GssvApi {
             .post(self.session_url(session, "/sdp"))
             .json(&GssvSdpOffer {
                 message_type: "offer",
-                sdp: "todo".to_string(),
+                sdp: sdp.to_string(),
                 configuration: SdpConfiguration {
                     containerize_audio: false,
                     chat: ChannelVersion {
@@ -253,8 +281,8 @@ impl GssvApi {
                         bytes_per_sample: 2,
                         expected_clip_duration_ms: 100,
                         format: ChatAudioFormat {
-                            codec: "opus",
-                            container: "webm",
+                            codec: "opus".into(),
+                            container: "webm".into(),
                         },
                         num_channels: 1,
                         sample_frequency_hz: 24000,
@@ -380,26 +408,26 @@ struct ChannelVersion {
 
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
-struct ChatAudioFormat<'a> {
-    codec: &'a str,
-    container: &'a str,
+struct ChatAudioFormat {
+    codec: String,
+    container: String,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
-struct ChatConfiguration<'a> {
+struct ChatConfiguration {
     bytes_per_sample: u8,
     expected_clip_duration_ms: u32,
-    format: ChatAudioFormat<'a>,
+    format: ChatAudioFormat,
     num_channels: u8,
     sample_frequency_hz: u32,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
-struct SdpConfiguration<'a> {
+struct SdpConfiguration {
     containerize_audio: bool,
-    chat_configuration: ChatConfiguration<'a>,
+    chat_configuration: ChatConfiguration,
     chat: ChannelVersion,
     control: ChannelVersion,
     input: ChannelVersion,
@@ -416,7 +444,7 @@ struct GssvSdpOffer<'a> {
     message_type: &'a str,
     // TODO: Create SDP model
     sdp: String,
-    configuration: SdpConfiguration<'a>,
+    configuration: SdpConfiguration,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -429,34 +457,34 @@ struct IceMessage<'a> {
 
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
-struct AppEnvironment<'a> {
-    client_app_id: &'a str,
-    client_app_type: &'a str,
-    client_app_version: &'a str,
-    client_sdk_version: &'a str,
-    http_environment: &'a str,
-    sdk_install_id: &'a str,
+struct AppEnvironment {
+    client_app_id: String,
+    client_app_type: String,
+    client_app_version: String,
+    client_sdk_version: String,
+    http_environment: String,
+    sdk_install_id: String,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
-struct AppInfo<'a> {
-    env: AppEnvironment<'a>,
+struct AppInfo {
+    env: AppEnvironment,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
-struct DevHardwareInfo<'a> {
-    make: &'a str,
-    model: &'a str,
-    sdk_type: &'a str,
+struct DevHardwareInfo {
+    make: String,
+    model: String,
+    sdk_type: String,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
-struct DevOsInfo<'a> {
-    name: &'a str,
-    ver: &'a str,
+struct DevOsInfo {
+    name: String,
+    ver: String,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -482,17 +510,17 @@ struct DevDisplayInfo {
 
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
-struct DevInfo<'a> {
-    hw: DevHardwareInfo<'a>,
-    os: DevOsInfo<'a>,
+struct DevInfo {
+    hw: DevHardwareInfo,
+    os: DevOsInfo,
     display_info: DevDisplayInfo,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
-struct DeviceInfo<'a> {
-    app_info: AppInfo<'a>,
-    dev: DevInfo<'a>,
+struct DeviceInfo {
+    app_info: AppInfo,
+    dev: DevInfo,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -532,7 +560,6 @@ struct OfferingSettings {
     token_type: String,
     duration_in_seconds: u32,
 }
-
 
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
