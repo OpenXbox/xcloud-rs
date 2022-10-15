@@ -167,7 +167,7 @@ impl XalAuthenticator {
         &mut self,
         refresh_token: &RefreshToken,
     ) -> Result<response::XCloudTokenResponse> {
-        let json_body = request::WindowsLiveTokenRequest {
+        let form_body = request::WindowsLiveTokenRequest {
             client_id: self.client_params.app_id,
             grant_type: "refresh_token",
             scope:
@@ -181,7 +181,7 @@ impl XalAuthenticator {
         let resp = self.client
             .post("https://login.live.com/oauth20_token.srf")
             .header("MS-CV", self.next_cv())
-            .form(&json_body)
+            .form(&form_body)
             .send()
             .await?;
 
