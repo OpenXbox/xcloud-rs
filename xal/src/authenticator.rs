@@ -177,15 +177,15 @@ impl XalAuthenticator {
             redirect_uri: None,
         };
 
-        let resp = self
-            .client
+        self.client
             .post("https://login.live.com/oauth20_token.srf")
             .header("MS-CV", self.next_cv())
             .form(&form_body)
             .send()
-            .await?;
-
-        Ok(serde_json::from_str(&resp.text().await?)?)
+            .await?
+            .json::<response::XCloudTokenResponse>()
+            .await
+            .map_err(|e| e.into())
     }
 
     pub async fn refresh_token(
@@ -262,9 +262,13 @@ impl XalAuthenticator {
         request = self
             .request_signer
             .sign_request(request, Some(Utc::now()))?;
-        let resp = self.client.execute(request).await?;
 
-        Ok(serde_json::from_str(&resp.text().await?)?)
+        self.client
+            .execute(request)
+            .await?
+            .json::<response::XADResponse>()
+            .await
+            .map_err(|e| e.into())
     }
 
     /// Sisu authentication
@@ -314,9 +318,9 @@ impl XalAuthenticator {
             .to_str()?
             .to_owned();
 
-        let resp_text = resp.text().await?;
+        let resp_json = resp.json::<response::SisuAuthenticationResponse>().await?;
 
-        Ok((serde_json::from_str(&resp_text)?, session_id))
+        Ok((resp_json, session_id))
     }
 
     pub async fn do_sisu_authorization(
@@ -343,8 +347,12 @@ impl XalAuthenticator {
             .build()?;
 
         request = self.request_signer.sign_request(request, None)?;
-        let resp = self.client.execute(request).await?;
-        Ok(serde_json::from_str(&resp.text().await?)?)
+        self.client
+            .execute(request)
+            .await?
+            .json::<response::SisuAuthorizationResponse>()
+            .await
+            .map_err(|e| e.into())
     }
 
     pub async fn do_xsts_authorization(
@@ -377,8 +385,12 @@ impl XalAuthenticator {
             .build()?;
 
         request = self.request_signer.sign_request(request, None)?;
-        let resp = self.client.execute(request).await?;
-        Ok(serde_json::from_str(&resp.text().await?)?)
+        self.client
+            .execute(request)
+            .await?
+            .json::<response::XSTSResponse>()
+            .await
+            .map_err(|e| e.into())
     }
 }
 
