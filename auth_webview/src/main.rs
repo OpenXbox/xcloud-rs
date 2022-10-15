@@ -149,12 +149,12 @@ fn main() -> wry::Result<()> {
                             &sisu_session_id,
                             &device_token.token_data.token,
                         )) {
-                          Ok(_) => {
-                            println!("SISU authentication succeeded! :)");
-                          },
-                          Err(err) => {
-                            println!("Failed SISU auth :( - details: {}", err);
-                          }
+                            Ok(_) => {
+                                println!("SISU authentication succeeded! :)");
+                            }
+                            Err(err) => {
+                                println!("Failed SISU auth :( - details: {}", err);
+                            }
                         }
                     } else {
                         println!("No authorization code fetched :(");

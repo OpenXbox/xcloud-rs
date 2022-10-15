@@ -1,10 +1,13 @@
 use super::filetime::FileTime;
 use super::models;
-use std::option::Option;
 use base64;
 use chrono::prelude::*;
-use josekit::{self, jwk::{Jwk, alg::ec::EcKeyPair}};
+use josekit::{
+    self,
+    jwk::{alg::ec::EcKeyPair, Jwk},
+};
 use reqwest;
+use std::option::Option;
 use url::Position;
 
 type Error = Box<dyn std::error::Error>;

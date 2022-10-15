@@ -13,9 +13,8 @@ use oauth2::{
     },
     reqwest::{async_http_client, http_client},
     url, AccessToken, AuthType, AuthUrl, AuthorizationCode, Client as OAuthClient, ClientId,
-    EmptyExtraTokenFields, ExtraTokenFields, PkceCodeChallenge, PkceCodeVerifier,
-    RedirectUrl, RefreshToken, Scope,
-    StandardRevocableToken, TokenResponse, TokenType, TokenUrl,
+    EmptyExtraTokenFields, ExtraTokenFields, PkceCodeChallenge, PkceCodeVerifier, RedirectUrl,
+    RefreshToken, Scope, StandardRevocableToken, TokenResponse, TokenType, TokenUrl,
 };
 use reqwest;
 use url::Url;
@@ -178,7 +177,8 @@ impl XalAuthenticator {
             redirect_uri: None,
         };
 
-        let resp = self.client
+        let resp = self
+            .client
             .post("https://login.live.com/oauth20_token.srf")
             .header("MS-CV", self.next_cv())
             .form(&form_body)
