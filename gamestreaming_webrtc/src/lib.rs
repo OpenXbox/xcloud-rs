@@ -1,5 +1,5 @@
-mod packets;
 mod api;
+mod packets;
 
 #[cfg(test)]
 mod tests {
