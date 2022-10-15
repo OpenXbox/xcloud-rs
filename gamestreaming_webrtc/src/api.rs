@@ -164,14 +164,8 @@ impl GssvApi {
                         min_version: 1,
                         max_version: 1,
                     },
-                    audio: ChannelVersion {
-                        min_version: 1,
-                        max_version: 1,
-                    },
-                    video: ChannelVersion {
-                        min_version: 1,
-                        max_version: 1,
-                    },
+                    audio: None,
+                    video: None,
                     chat_configuration: ChatConfiguration {
                         bytes_per_sample: 2,
                         expected_clip_duration_ms: 100,
@@ -283,12 +277,14 @@ struct ChatConfiguration<'a> {
 struct SdpConfiguration<'a> {
     containerize_audio: bool,
     chat_configuration: ChatConfiguration<'a>,
-    audio: ChannelVersion,
     chat: ChannelVersion,
     control: ChannelVersion,
     input: ChannelVersion,
     message: ChannelVersion,
-    video: ChannelVersion,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    audio: Option<ChannelVersion>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    video: Option<ChannelVersion>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
