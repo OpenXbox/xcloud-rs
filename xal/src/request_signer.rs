@@ -1,13 +1,10 @@
 use super::filetime::FileTime;
 use super::models;
+use std::option::Option;
 use base64;
 use chrono::prelude::*;
-use josekit;
-use josekit::jwk::alg::ec::EcKeyPair;
-use josekit::jwk::Jwk;
-use reqwest::{self};
-use sha2::{Digest, Sha256};
-use std::option::Option;
+use josekit::{self, jwk::{Jwk, alg::ec::EcKeyPair}};
+use reqwest;
 use url::Position;
 
 type Error = Box<dyn std::error::Error>;
@@ -19,12 +16,6 @@ pub struct XboxWebSignatureBytes {
     timestamp: Vec<u8>,
     signed_digest: Vec<u8>,
 }
-
-#[derive(Debug)]
-pub struct XboxDigestToSign(Vec<u8>);
-
-#[derive(Debug)]
-pub struct XboxPlaintextMessageToHash(Vec<u8>);
 
 impl XboxWebSignatureBytes {
     pub fn as_bytestream(&self) -> Vec<u8> {
@@ -171,7 +162,7 @@ impl RequestSigner {
             .expect("Failed to assemble message data !");
 
         // Sign the message
-        let signed_digest: Vec<u8> = signer.sign(&message.0)?;
+        let signed_digest: Vec<u8> = signer.sign(&message)?;
 
         // Return final signature
         Ok(XboxWebSignatureBytes {
@@ -190,7 +181,7 @@ impl RequestSigner {
         authorization: String,
         body: &[u8],
         max_body_bytes: usize,
-    ) -> Result<XboxPlaintextMessageToHash> {
+    ) -> Result<Vec<u8>> {
         const NULL_BYTE: &[u8; 1] = &[0x00];
 
         let mut data = Vec::<u8>::new();
@@ -219,7 +210,7 @@ impl RequestSigner {
         data.extend_from_slice(&body[..body_size_to_hash]);
         data.extend_from_slice(NULL_BYTE);
 
-        Ok(XboxPlaintextMessageToHash(data))
+        Ok(data)
     }
 }
 
@@ -284,7 +275,7 @@ mod test {
             .expect("Failed to assemble message data");
 
         assert_eq!(
-            message_data.0,
+            message_data,
             hex!("000000010001d6138d10f7cc8000504f5354002f706174683f71756572793d310058424c332e3020783d7573657269643b6a736f6e776562746f6b656e00746865626f6479676f65736865726500").to_vec()
         );
     }

@@ -13,12 +13,11 @@ use oauth2::{
     },
     reqwest::{async_http_client, http_client},
     url, AccessToken, AuthType, AuthUrl, AuthorizationCode, Client as OAuthClient, ClientId,
-    CsrfToken, EmptyExtraTokenFields, ExtraTokenFields, PkceCodeChallenge, PkceCodeVerifier,
-    RedirectUrl, RefreshToken, ResourceOwnerPassword, ResourceOwnerUsername, Scope,
-    StandardRevocableToken, StandardTokenResponse, TokenResponse, TokenType, TokenUrl,
+    EmptyExtraTokenFields, ExtraTokenFields, PkceCodeChallenge, PkceCodeVerifier,
+    RedirectUrl, RefreshToken, Scope,
+    StandardRevocableToken, TokenResponse, TokenType, TokenUrl,
 };
 use reqwest;
-use serde::Serialize;
 use url::Url;
 use uuid;
 
@@ -186,9 +185,7 @@ impl XalAuthenticator {
             .send()
             .await?;
 
-        let text = resp.text().await?;
-        println!("XTOKEN Response: {:?}", text);
-        Ok(serde_json::from_str(&text)?)
+        Ok(serde_json::from_str(&resp.text().await?)?)
     }
 
     pub async fn refresh_token(
