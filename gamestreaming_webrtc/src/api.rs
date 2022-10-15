@@ -94,7 +94,7 @@ impl GssvApi {
         Ok(Self::new(
             Url::parse(&resp.offering_settings.regions.first().unwrap().base_uri).unwrap(),
             &resp.offering_settings.gs_token,
-            "xcloud",
+            "cloud",
         ))
     }
 
