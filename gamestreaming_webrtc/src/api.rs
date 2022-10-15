@@ -1,5 +1,5 @@
 use reqwest::{header, header::HeaderMap, Client, ClientBuilder, Response, StatusCode, Url};
-use serde::{Deserialize, Serialize};
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use serde_json;
 use thiserror::Error;
 
@@ -57,8 +57,8 @@ impl GssvApi {
             .post(login_url)
             .headers(headers)
             .json(&LoginRequest {
-                token: token,
-                offering_id: offering_id,
+                token: token.into(),
+                offering_id: offering_id.into(),
             })
             .send()
             .await
@@ -110,26 +110,55 @@ impl GssvApi {
             .unwrap()
     }
 
-    pub async fn get_consoles(&self) -> Result<ConsolesResponse, GssvApiError> {
-        self.client
-            .get(self.url("/v6/servers/home"))
-            .send()
+    async fn get_json<T>(&self, url: Url, headers: Option<HeaderMap>) -> Result<T, GssvApiError>
+    where
+        T: DeserializeOwned,
+    {
+        let mut req = self.client.get(url);
+
+        if let Some(headers) = headers {
+            req = req.headers(headers);
+        }
+
+        req.send()
             .await
             .map_err(GssvApiError::HttpError)?
-            .json::<ConsolesResponse>()
+            .json::<T>()
             .await
             .map_err(GssvApiError::HttpError)
     }
 
-    pub async fn get_titles(&self) -> Result<TitlesResponse, GssvApiError> {
-        self.client
-            .get(self.url("/v1/titles"))
+    async fn post_json<RQ, RS>(
+        &self,
+        url: Url,
+        request_body: RQ,
+        headers: Option<HeaderMap>,
+    ) -> Result<RS, GssvApiError>
+    where
+        RQ: Serialize,
+        RS: DeserializeOwned,
+    {
+        let mut req = self.client.post(url);
+
+        if let Some(headers) = headers {
+            req = req.headers(headers);
+        }
+
+        req.json(&request_body)
             .send()
             .await
             .map_err(GssvApiError::HttpError)?
-            .json::<TitlesResponse>()
+            .json::<RS>()
             .await
             .map_err(GssvApiError::HttpError)
+    }
+
+    pub async fn get_consoles(&self) -> Result<ConsolesResponse, GssvApiError> {
+        self.get_json(self.url("/v6/servers/home"), None).await
+    }
+
+    pub async fn get_titles(&self) -> Result<TitlesResponse, GssvApiError> {
+        self.get_json(self.url("/v1/titles"), None).await
     }
 
     pub async fn start_session(&self, server_id: &str) -> Result<SessionResponse, GssvApiError> {
@@ -177,31 +206,29 @@ impl GssvApi {
             devinfo_str.parse().map_err(|_| GssvApiError::Unknown)?,
         );
 
-        self.client
-            .post(self.url(&format!("/v5/sessions/{}/play", self.platform)))
-            .json(&GssvSessionConfig {
-                title_id: "",
-                system_update_group: "",
-                server_id: server_id,
-                fallback_region_names: vec![],
-                settings: GssvSessionSettings {
-                    nano_version: "V3;WebrtcTransport.dll",
-                    enable_text_to_speech: false,
-                    high_contrast: 0,
-                    locale: "en-US",
-                    use_ice_connection: false,
-                    timezone_offset_minutes: 120,
-                    sdk_type: "web",
-                    os_name: "windows",
-                },
-            })
-            .headers(headers)
-            .send()
-            .await
-            .map_err(GssvApiError::HttpError)?
-            .json::<SessionResponse>()
-            .await
-            .map_err(GssvApiError::HttpError)
+        let request_body = GssvSessionConfig {
+            title_id: "".into(),
+            system_update_group: "".into(),
+            server_id: server_id.into(),
+            fallback_region_names: vec![],
+            settings: GssvSessionSettings {
+                nano_version: "V3;WebrtcTransport.dll".into(),
+                enable_text_to_speech: false,
+                high_contrast: 0,
+                locale: "en-US".into(),
+                use_ice_connection: false,
+                timezone_offset_minutes: 120,
+                sdk_type: "web".into(),
+                os_name: "windows".into(),
+            },
+        };
+
+        self.post_json(
+            self.url(&format!("/v5/sessions/{}/play", self.platform)),
+            &request_body,
+            Some(headers),
+        )
+        .await
     }
 
     pub async fn session_connect(
@@ -213,7 +240,7 @@ impl GssvApi {
             .client
             .post(self.session_url(session, "/connect"))
             .json(&XCloudConnect {
-                user_token: user_token,
+                user_token: user_token.into(),
             })
             .send()
             .await
@@ -229,25 +256,16 @@ impl GssvApi {
         &self,
         session: &SessionResponse,
     ) -> Result<SessionStateResponse, GssvApiError> {
-        self.client
-            .get(self.session_url(session, "/state"))
-            .send()
+        self.get_json(self.session_url(session, "/state"), None)
             .await
-            .map_err(GssvApiError::HttpError)?
-            .json::<SessionStateResponse>()
-            .await
-            .map_err(GssvApiError::HttpError)
     }
 
     pub async fn get_session_config(
         &self,
         session: &SessionResponse,
-    ) -> Result<Response, GssvApiError> {
-        self.client
-            .get(self.session_url(session, "/configuration"))
-            .send()
+    ) -> Result<GssvSessionConfig, GssvApiError> {
+        self.get_json(self.session_url(session, "/configuration"), None)
             .await
-            .map_err(GssvApiError::HttpError)
     }
 
     pub async fn set_sdp(&self, session: &SessionResponse, sdp: &str) -> Result<(), GssvApiError> {
@@ -255,7 +273,7 @@ impl GssvApi {
             .client
             .post(self.session_url(session, "/sdp"))
             .json(&GssvSdpOffer {
-                message_type: "offer",
+                message_type: "offer".into(),
                 sdp: sdp.to_string(),
                 configuration: SdpConfiguration {
                     containerize_audio: false,
@@ -304,8 +322,8 @@ impl GssvApi {
             .client
             .post(self.session_url(session, "/ice"))
             .json(&IceMessage {
-                message_type: "iceCandidate",
-                candidate: "todo".to_string(),
+                message_type: "iceCandidate".into(),
+                candidate: "todo".into(),
             })
             .send()
             .await
@@ -321,28 +339,14 @@ impl GssvApi {
         &self,
         session: &SessionResponse,
     ) -> Result<ExchangeResponse, GssvApiError> {
-        self.client
-            .get(self.session_url(session, "/sdp"))
-            .send()
-            .await
-            .map_err(GssvApiError::HttpError)?
-            .json::<ExchangeResponse>()
-            .await
-            .map_err(GssvApiError::HttpError)
+        self.get_json(self.session_url(session, "/sdp"), None).await
     }
 
     pub async fn get_ice(
         &self,
         session: &SessionResponse,
     ) -> Result<ExchangeResponse, GssvApiError> {
-        self.client
-            .get(self.session_url(session, "/ice"))
-            .send()
-            .await
-            .map_err(GssvApiError::HttpError)?
-            .json::<ExchangeResponse>()
-            .await
-            .map_err(GssvApiError::HttpError)
+        self.get_json(self.session_url(session, "/ice"), None).await
     }
 
     pub async fn send_keepalive(
@@ -365,38 +369,38 @@ impl GssvApi {
 
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
-struct LoginRequest<'a> {
-    token: &'a str,
-    offering_id: &'a str,
+struct LoginRequest {
+    token: String,
+    offering_id: String,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
-struct XCloudConnect<'a> {
-    user_token: &'a str,
+struct XCloudConnect {
+    user_token: String,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
-struct GssvSessionSettings<'a> {
-    nano_version: &'a str,
+struct GssvSessionSettings {
+    nano_version: String,
     enable_text_to_speech: bool,
     high_contrast: u8,
-    locale: &'a str,
+    locale: String,
     use_ice_connection: bool,
     timezone_offset_minutes: u32,
-    sdk_type: &'a str,
-    os_name: &'a str,
+    sdk_type: String,
+    os_name: String,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
-struct GssvSessionConfig<'a> {
-    title_id: &'a str,
-    system_update_group: &'a str,
-    settings: GssvSessionSettings<'a>,
-    server_id: &'a str,
-    fallback_region_names: Vec<&'a str>,
+struct GssvSessionConfig {
+    title_id: String,
+    system_update_group: String,
+    settings: GssvSessionSettings,
+    server_id: String,
+    fallback_region_names: Vec<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -440,8 +444,8 @@ struct SdpConfiguration {
 
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
-struct GssvSdpOffer<'a> {
-    message_type: &'a str,
+struct GssvSdpOffer {
+    message_type: String,
     // TODO: Create SDP model
     sdp: String,
     configuration: SdpConfiguration,
@@ -449,8 +453,8 @@ struct GssvSdpOffer<'a> {
 
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
-struct IceMessage<'a> {
-    message_type: &'a str,
+struct IceMessage {
+    message_type: String,
     // TODO: Create ICE candidate model
     candidate: String,
 }
