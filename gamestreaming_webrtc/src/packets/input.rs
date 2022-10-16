@@ -1,4 +1,7 @@
-use deku::{prelude::*, bitvec::{BitSlice, Msb0, BitVec}};
+use deku::{
+    bitvec::{BitSlice, BitVec, Msb0},
+    prelude::*,
+};
 use enumflags2::{bitflags, BitFlags};
 
 #[bitflags]
@@ -28,7 +31,7 @@ impl<'a> DekuRead<'a> for InputReportTypeFlags {
     {
         let (rest, flags) = u8::read(&input, ())?;
         let res = BitFlags::from_bits(flags)
-            .map_err(|_|DekuError::Parse("Failed to read input report type flags".into()))?;
+            .map_err(|_| DekuError::Parse("Failed to read input report type flags".into()))?;
 
         Ok((rest, InputReportTypeFlags(res)))
     }
@@ -73,7 +76,7 @@ struct MetadataReport {
     #[deku(update = "self.metadata.len()")]
     queue_len: u8,
     #[deku(count = "queue_len")]
-    metadata: Vec<InputMetadataEntry>
+    metadata: Vec<InputMetadataEntry>,
 }
 
 #[derive(Debug, PartialEq, DekuRead, DekuWrite)]
@@ -112,7 +115,8 @@ struct SequenceInfo {
 #[derive(Debug, PartialEq, DekuRead, DekuWrite)]
 struct InputPacket {
     report_type: InputReportTypeFlags,
-    #[deku(cond = "!report_type.0.contains(InputReportType::Vibration)")] // Skip sequence info on vibration packets
+    #[deku(cond = "!report_type.0.contains(InputReportType::Vibration)")]
+    // Skip sequence info on vibration packets
     seq_info: Option<SequenceInfo>,
     #[deku(cond = "report_type.0.contains(InputReportType::Metadata)")]
     metadata_report: Option<MetadataReport>,
@@ -178,6 +182,6 @@ mod tests {
         assert_eq!(vibration_payload.right_trigger_motor_percent, 0xF4);
         assert_eq!(vibration_payload.duration_ms, 0x150);
         assert_eq!(vibration_payload.delay_ms, 0x1FF);
-        assert_eq!(vibration_payload.repeat, 0x10);        
+        assert_eq!(vibration_payload.repeat, 0x10);
     }
 }

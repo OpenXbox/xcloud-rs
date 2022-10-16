@@ -7,7 +7,7 @@ use xal::oauth2::PkceCodeVerifier;
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut xal = XalAuthenticator::default();
     let (code_challenge, code_verifier) = XalAuthenticator::get_code_challenge();
-    
+
     println!("Getting device token...");
     let device_token = xal.get_device_token().await?;
     println!("Device token={:?}", device_token);
@@ -15,18 +15,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let state = XalAuthenticator::generate_random_state();
 
     println!("Fetching SISU authentication URL...");
-    let (sisu_response, sisu_session_id) = xal.do_sisu_authentication(
-        &device_token.token_data.token,
-        code_challenge,
-        &state,
-    )
-    .await?;
+    let (sisu_response, sisu_session_id) = xal
+        .do_sisu_authentication(&device_token.token_data.token, code_challenge, &state)
+        .await?;
 
     println!(
-r#"!!! ACTION REQUIRED !!!
+        r#"!!! ACTION REQUIRED !!!
 Navigate to this URL and authenticate: {}
 When finished, paste the Redirect URL and hit [ENTER]"#,
-           sisu_response.msa_oauth_redirect
+        sisu_response.msa_oauth_redirect
     );
 
     let mut redirect_uri = String::new();
@@ -36,7 +33,11 @@ When finished, paste the Redirect URL and hit [ENTER]"#,
     println!("Checking redirect URI...");
     let expected_scheme = xal.get_redirect_uri().scheme().to_owned();
     if !redirect_uri.starts_with(&expected_scheme) {
-        return Err(format!("Invalid redirect URL, expecting scheme: {}", expected_scheme).into());
+        return Err(format!(
+            "Invalid redirect URL, expecting scheme: {}",
+            expected_scheme
+        )
+        .into());
     }
 
     // Parse redirect URI
@@ -67,7 +68,7 @@ When finished, paste the Redirect URL and hit [ENTER]"#,
     if let Some(authorization_code) = code_query {
         println!("Authorization Code: {}", &authorization_code);
         let local_code_verifier = PkceCodeVerifier::new(code_verifier.secret().clone());
-        
+
         println!("Getting WL tokens...");
         let wl_token = xal
             .exchange_code_for_token(&authorization_code, local_code_verifier)
@@ -77,12 +78,12 @@ When finished, paste the Redirect URL and hit [ENTER]"#,
 
         println!("Attempting SISU authorization...");
         let auth_response = xal
-        .do_sisu_authorization(
-            &sisu_session_id,
-            wl_token.access_token.secret(),
-            &device_token.token_data.token,
-        )
-        .await?;
+            .do_sisu_authorization(
+                &sisu_session_id,
+                wl_token.access_token.secret(),
+                &device_token.token_data.token,
+            )
+            .await?;
         println!("SISU={:?}", auth_response);
 
         println!("Getting GSSV token...");
