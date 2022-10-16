@@ -40,10 +40,10 @@ impl GssvApi {
     }
 
     async fn login(
-        login_url: &str,
         offering_id: &str,
         token: &str,
     ) -> Result<LoginResponse, GssvApiError> {
+        let login_url = format!("https://{}.gssv-play-prod.xboxlive.com/v2/login/user", offering_id);
         let mut headers = HeaderMap::new();
         headers.insert(
             "x-gssv-client",
@@ -70,7 +70,6 @@ impl GssvApi {
 
     pub async fn login_xhome(token: &str) -> Result<Self, GssvApiError> {
         let resp = GssvApi::login(
-            "https://xhome.gssv-play-prod.xboxlive.com/v2/login/user",
             "xhome",
             token,
         )
@@ -78,14 +77,13 @@ impl GssvApi {
 
         Ok(Self::new(
             Url::parse(&resp.offering_settings.regions.first().unwrap().base_uri).unwrap(),
-            &resp.offering_settings.gs_token,
+            &resp.gs_token,
             "home",
         ))
     }
 
     pub async fn login_xcloud(token: &str) -> Result<Self, GssvApiError> {
         let resp = GssvApi::login(
-            "https://xgpuweb.gssv-play-prod.xboxlive.com/v2/login/user",
             "xgpuweb",
             token,
         )
@@ -93,7 +91,7 @@ impl GssvApi {
 
         Ok(Self::new(
             Url::parse(&resp.offering_settings.regions.first().unwrap().base_uri).unwrap(),
-            &resp.offering_settings.gs_token,
+            &resp.gs_token,
             "cloud",
         ))
     }
@@ -532,7 +530,7 @@ struct DeviceInfo {
 struct OfferingRegion {
     name: String,
     base_uri: String,
-    network_test_hostname: String,
+    network_test_hostname: Option<String>,
     is_default: bool,
     system_update_groups: Option<Vec<String>>,
     fallback_priority: i32,
@@ -542,7 +540,7 @@ struct OfferingRegion {
 #[serde(rename_all = "PascalCase")]
 struct CloudEnvironment {
     name: String,
-    auth_base_uri: String,
+    auth_base_uri: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -559,16 +557,16 @@ struct OfferingSettings {
     regions: Vec<OfferingRegion>,
     selectable_server_types: Option<Vec<String>>,
     client_cloud_settings: ClientCloudSettings,
-    market: String,
-    gs_token: String,
-    token_type: String,
-    duration_in_seconds: u32,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
 struct LoginResponse {
     offering_settings: OfferingSettings,
+    market: String,
+    gs_token: String,
+    token_type: String,
+    duration_in_seconds: u32,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
