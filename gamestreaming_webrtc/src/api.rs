@@ -571,10 +571,22 @@ pub struct LoginResponse {
 
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
+pub struct ConsoleEntry {
+    pub device_name: String,
+    pub server_id: String,
+    pub power_state: String,
+    pub console_type: String,
+    pub play_path: String,
+    pub out_of_home_warning: bool,
+    pub wireless_warning: bool,
+    pub is_devkit: bool,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
 pub struct ConsolesResponse {
     pub total_items: u32,
     pub continuation_token: Option<String>,
-    // TODO
     pub results: Vec<String>,
 }
 
