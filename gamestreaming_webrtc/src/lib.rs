@@ -1,6 +1,7 @@
 pub mod api;
 pub mod error;
 mod packets;
+mod serde_helpers;
 
 use api::{TitleResult, ConsolesResponse};
 
