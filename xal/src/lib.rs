@@ -1,4 +1,5 @@
 pub use oauth2;
+pub use cvlib;
 
 pub mod app_params;
 pub mod authenticator;
