@@ -572,7 +572,10 @@ struct LoginResponse {
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
 struct ConsolesResponse {
-    dummy: String,
+    total_items: u32,
+    continuation_token: Option<String>,
+    // TODO
+    results: Vec<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
