@@ -22,7 +22,11 @@ jobs:
           default: true
           override: true
 
-      - name: Test
-        run: cargo test
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+
       - name: Build
         run: cargo build --all --release
+
+      - name: Test
+        run: cargo test
