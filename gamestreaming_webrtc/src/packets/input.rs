@@ -49,7 +49,7 @@ impl DekuWrite for InputReportTypeFlags {
 struct VibrationReport {
     /// Rumble Type: 0 = FourMotorRumble
     rumble_type: u8,
-    _unknown: u8,
+    gamepad_id: u8,
 
     left_motor_percent: u8,
     right_motor_percent: u8,
@@ -144,7 +144,7 @@ mod tests {
         assert!(rest.0.is_empty());
         assert_eq!(rest.1, 0);
         assert_eq!(parsed.rumble_type, 0x00);
-        assert_eq!(parsed._unknown, 0x00);
+        assert_eq!(parsed.gamepad_id, 0x00);
         assert_eq!(parsed.left_motor_percent, 0xF1);
         assert_eq!(parsed.right_motor_percent, 0xF2);
         assert_eq!(parsed.left_trigger_motor_percent, 0xF3);
@@ -175,7 +175,7 @@ mod tests {
 
         let vibration_payload = parsed.vibration_report.expect("No vibration payload");
         assert_eq!(vibration_payload.rumble_type, 0x00);
-        assert_eq!(vibration_payload._unknown, 0x00);
+        assert_eq!(vibration_payload.gamepad_id, 0x00);
         assert_eq!(vibration_payload.left_motor_percent, 0xF1);
         assert_eq!(vibration_payload.right_motor_percent, 0xF2);
         assert_eq!(vibration_payload.left_trigger_motor_percent, 0xF3);
