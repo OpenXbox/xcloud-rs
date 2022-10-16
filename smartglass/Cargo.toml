@@ -10,6 +10,5 @@ edition = "2018"
 reqwest = { version = "0.11.12", features = ["json"] }
 serde = { version = "1.0.145", features = ["derive"] }
 serde_json = "1.0.85"
-correlation_vector = { git = "https://github.com/tuxuser/CorrelationVector-Rust.git", branch = "master" }
 uuid = { version = "1.1.2", features = ["v4"] }
 xal = { path = "../xal" }

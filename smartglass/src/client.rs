@@ -1,9 +1,9 @@
 use super::models;
-use correlation_vector::vector_impl;
 use reqwest;
 use std::collections::HashMap;
 use std::default::Default;
 use uuid;
+use xal::cvlib::CorrelationVector;
 use xal::models as xal_models;
 use xal::request_signer;
 
@@ -14,7 +14,7 @@ pub struct SmartglassClient {
     session_id: uuid::Uuid,
     request_signer: request_signer::RequestSigner,
     client: reqwest::Client,
-    ms_cv: vector_impl::CorrelationVector,
+    ms_cv: CorrelationVector,
 }
 
 impl SmartglassClient {
@@ -42,9 +42,14 @@ impl SmartglassClient {
         Ok(Self {
             session_id: session_id.unwrap_or(uuid::Uuid::new_v4()),
             request_signer: request_signer::RequestSigner::default(),
-            ms_cv: vector_impl::CorrelationVector::default(),
+            ms_cv: CorrelationVector::default(),
             client: client,
         })
+    }
+
+    fn next_cv(&mut self) -> String {
+        self.ms_cv.increment();
+        self.ms_cv.to_string()
     }
 
     pub async fn send_signed(
@@ -55,7 +60,7 @@ impl SmartglassClient {
 
         request
             .headers_mut()
-            .insert("MS-CV", self.ms_cv.increment().parse()?);
+            .insert("MS-CV", self.next_cv().parse()?);
         request = self.request_signer.sign_request(request, None)?;
         Ok(self.client.execute(request).await?)
     }
