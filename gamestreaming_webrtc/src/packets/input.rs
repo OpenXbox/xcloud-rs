@@ -1,5 +1,5 @@
 use super::error::FlagsError;
-use deku::prelude::*;
+use deku::{prelude::*, bitvec::{BitSlice, Msb0, BitVec}};
 use enumflags2::{bitflags, BitFlags};
 
 #[bitflags]
@@ -15,10 +15,37 @@ enum InputReportType {
     Vibration = 128,
 }
 
+/// Wrapper around input report type flags
+#[derive(Debug, PartialEq)]
+struct InputReportTypeFlags(BitFlags<InputReportType>);
+
+impl<'a> DekuRead<'a> for InputReportTypeFlags {
+    fn read(
+        input: &'a BitSlice<Msb0, u8>,
+        _ctx: (),
+    ) -> Result<(&'a BitSlice<Msb0, u8>, Self), DekuError>
+    where
+        Self: Sized,
+    {
+        let (rest, flags) = u8::read(&input, ())?;
+        let res = BitFlags::from_bits(flags)
+            .map_err(|_|DekuError::Parse("Failed to read input report type flags".into()))?;
+
+        Ok((rest, InputReportTypeFlags(res)))
+    }
+}
+
+impl DekuWrite for InputReportTypeFlags {
+    fn write(&self, output: &mut BitVec<Msb0, u8>, _ctx: ()) -> Result<(), DekuError> {
+        let byte = self.0.bits_c();
+        output.extend([byte]);
+        Ok(())
+    }
+}
+
 #[derive(Debug, PartialEq, DekuRead, DekuWrite)]
-#[deku(endian = "little")]
 struct InputRumblePacket {
-    report_type: u8,
+    report_type: InputReportTypeFlags,
     /// Rumble Type: 0 = FourMotorRumble
     rumble_type: u8,
     _unknown: u8,
@@ -33,7 +60,6 @@ struct InputRumblePacket {
 }
 
 #[derive(Debug, PartialEq, DekuRead, DekuWrite)]
-#[deku(endian = "little")]
 struct InputMetadataEntry {
     server_data_key: u32,
     first_frame_packet_arrival_time_ms: u32,
@@ -45,9 +71,8 @@ struct InputMetadataEntry {
 }
 
 #[derive(Debug, PartialEq, DekuRead, DekuWrite)]
-#[deku(endian = "little")]
 struct InputMetadata {
-    report_type: u8,
+    report_type: InputReportTypeFlags,
     sequence_num: u32,
     timestamp: f64,
     #[deku(update = "self.metadata.len()")]
@@ -57,7 +82,6 @@ struct InputMetadata {
 }
 
 #[derive(Debug, PartialEq, DekuRead, DekuWrite)]
-#[deku(endian = "little")]
 struct GamepadData {
     gamepad_index: u8,
     button_mask: u16,
@@ -72,9 +96,8 @@ struct GamepadData {
 }
 
 #[derive(Debug, PartialEq, DekuRead, DekuWrite)]
-#[deku(endian = "little")]
 struct InputGamepad {
-    report_type: u8,
+    report_type: InputReportTypeFlags,
     sequence_num: u32,
     timestamp: f64,
     #[deku(update = "self.gamepad_data.len()")]
@@ -84,23 +107,13 @@ struct InputGamepad {
 }
 
 #[derive(Debug, PartialEq, DekuRead, DekuWrite)]
-#[deku(endian = "little")]
 struct InputClientMetadata {
-    report_type: u8,
+    report_type: InputReportTypeFlags,
     sequence_num: u32,
     timestamp: f64,
     metadata: u8,
 }
 
-impl InputRumblePacket {
-    fn get_report_type(&self) -> Result<BitFlags<InputReportType>, FlagsError<InputReportType>> {
-        BitFlags::from_bits(self.report_type).map_err(FlagsError::DeserializeError)
-    }
-
-    fn set_report_type(&mut self, report_type: BitFlags<InputReportType>) {
-        self.report_type = BitFlags::bits(report_type);
-    }
-}
 
 #[cfg(test)]
 mod tests {
@@ -117,7 +130,7 @@ mod tests {
         println!("{:?}", rest);
         assert!(rest.0.is_empty());
         assert_eq!(rest.1, 0);
-        assert_eq!(parsed.report_type, 0x80);
+        assert_eq!(parsed.report_type, InputReportTypeFlags(BitFlags::<InputReportType>::from(InputReportType::Vibration)));
         assert_eq!(parsed.rumble_type, 0x00);
         assert_eq!(parsed._unknown, 0x00);
         assert_eq!(parsed.left_motor_percent, 0xF1);
@@ -128,10 +141,7 @@ mod tests {
         assert_eq!(parsed.delay_ms, 0x1FF);
         assert_eq!(parsed.repeat, 0x10);
 
-        let report_type = parsed
-            .get_report_type()
-            .expect("Failed to get input report type flags");
-        assert!(report_type.contains(InputReportType::Vibration));
-        assert!(!report_type.contains(InputReportType::Mouse));
+        assert!(parsed.report_type.0.contains(InputReportType::Vibration));
+        assert!(!parsed.report_type.0.contains(InputReportType::Mouse));
     }
 }
