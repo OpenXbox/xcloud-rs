@@ -1,4 +1,3 @@
-use super::error::FlagsError;
 use deku::{prelude::*, bitvec::{BitSlice, Msb0, BitVec}};
 use enumflags2::{bitflags, BitFlags};
 
@@ -44,8 +43,7 @@ impl DekuWrite for InputReportTypeFlags {
 }
 
 #[derive(Debug, PartialEq, DekuRead, DekuWrite)]
-struct InputRumblePacket {
-    report_type: InputReportTypeFlags,
+struct VibrationReport {
     /// Rumble Type: 0 = FourMotorRumble
     rumble_type: u8,
     _unknown: u8,
@@ -71,10 +69,7 @@ struct InputMetadataEntry {
 }
 
 #[derive(Debug, PartialEq, DekuRead, DekuWrite)]
-struct InputMetadata {
-    report_type: InputReportTypeFlags,
-    sequence_num: u32,
-    timestamp: f64,
+struct MetadataReport {
     #[deku(update = "self.metadata.len()")]
     queue_len: u8,
     #[deku(count = "queue_len")]
@@ -96,10 +91,7 @@ struct GamepadData {
 }
 
 #[derive(Debug, PartialEq, DekuRead, DekuWrite)]
-struct InputGamepad {
-    report_type: InputReportTypeFlags,
-    sequence_num: u32,
-    timestamp: f64,
+struct GamepadReport {
     #[deku(update = "self.gamepad_data.len()")]
     queue_len: u8,
     #[deku(count = "queue_len")]
@@ -107,30 +99,46 @@ struct InputGamepad {
 }
 
 #[derive(Debug, PartialEq, DekuRead, DekuWrite)]
-struct InputClientMetadata {
-    report_type: InputReportTypeFlags,
-    sequence_num: u32,
-    timestamp: f64,
+struct ClientMetadataReport {
     metadata: u8,
 }
 
+#[derive(Debug, PartialEq, DekuRead, DekuWrite)]
+struct SequenceInfo {
+    sequence_num: u32,
+    timestamp: f64,
+}
+
+#[derive(Debug, PartialEq, DekuRead, DekuWrite)]
+struct InputPacket {
+    report_type: InputReportTypeFlags,
+    #[deku(cond = "!report_type.0.contains(InputReportType::Vibration)")] // Skip sequence info on vibration packets
+    seq_info: Option<SequenceInfo>,
+    #[deku(cond = "report_type.0.contains(InputReportType::Metadata)")]
+    metadata_report: Option<MetadataReport>,
+    #[deku(cond = "report_type.0.contains(InputReportType::GamepadReport)")]
+    gamepad_report: Option<GamepadReport>,
+    #[deku(cond = "report_type.0.contains(InputReportType::ClientMetadata)")]
+    client_metadata_report: Option<ClientMetadataReport>,
+    #[deku(cond = "report_type.0.contains(InputReportType::Vibration)")]
+    vibration_report: Option<VibrationReport>,
+}
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn deserialize_input_rumble_packet() {
+    fn deserialize_vibration_report() {
         let test_data = vec![
-            0x80, 0x00, 0x00, 0xF1, 0xF2, 0xF3, 0xF4, 0x50, 0x01, 0xFF, 0x01, 0x10,
+            0x00, 0x00, 0xF1, 0xF2, 0xF3, 0xF4, 0x50, 0x01, 0xFF, 0x01, 0x10,
         ];
-        let (rest, parsed) = InputRumblePacket::from_bytes((&test_data, 0))
+        let (rest, parsed) = VibrationReport::from_bytes((&test_data, 0))
             .expect("Failed to deserialize input rumble packet");
 
         println!("{:?}", rest);
         assert!(rest.0.is_empty());
         assert_eq!(rest.1, 0);
-        assert_eq!(parsed.report_type, InputReportTypeFlags(BitFlags::<InputReportType>::from(InputReportType::Vibration)));
         assert_eq!(parsed.rumble_type, 0x00);
         assert_eq!(parsed._unknown, 0x00);
         assert_eq!(parsed.left_motor_percent, 0xF1);
@@ -140,8 +148,36 @@ mod tests {
         assert_eq!(parsed.duration_ms, 0x150);
         assert_eq!(parsed.delay_ms, 0x1FF);
         assert_eq!(parsed.repeat, 0x10);
+    }
 
+    #[test]
+    fn deserialize_input_packet() {
+        let test_data = vec![
+            0x80, 0x00, 0x00, 0xF1, 0xF2, 0xF3, 0xF4, 0x50, 0x01, 0xFF, 0x01, 0x10,
+        ];
+
+        let (rest, parsed) = InputPacket::from_bytes((&test_data, 0))
+            .expect("Failed to deserialize input rumble packet");
+
+        println!("{:?}", rest);
+        assert!(rest.0.is_empty());
+        assert_eq!(rest.1, 0);
+
+        assert!(parsed.seq_info.is_none());
+        assert!(parsed.metadata_report.is_none());
+        assert!(parsed.gamepad_report.is_none());
+        assert!(parsed.client_metadata_report.is_none());
         assert!(parsed.report_type.0.contains(InputReportType::Vibration));
-        assert!(!parsed.report_type.0.contains(InputReportType::Mouse));
+
+        let vibration_payload = parsed.vibration_report.expect("No vibration payload");
+        assert_eq!(vibration_payload.rumble_type, 0x00);
+        assert_eq!(vibration_payload._unknown, 0x00);
+        assert_eq!(vibration_payload.left_motor_percent, 0xF1);
+        assert_eq!(vibration_payload.right_motor_percent, 0xF2);
+        assert_eq!(vibration_payload.left_trigger_motor_percent, 0xF3);
+        assert_eq!(vibration_payload.right_trigger_motor_percent, 0xF4);
+        assert_eq!(vibration_payload.duration_ms, 0x150);
+        assert_eq!(vibration_payload.delay_ms, 0x1FF);
+        assert_eq!(vibration_payload.repeat, 0x10);        
     }
 }
