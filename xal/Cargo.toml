@@ -25,3 +25,11 @@ url = "2.3.1"
 ecdsa = "0.14.8"
 signature = "1.6.4"
 oauth2 = "4.2.3"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["full"] }
+
+[[example]]
+name = "sisu-auth"
+path = "examples/sisu_auth.rs"
+bench = false
