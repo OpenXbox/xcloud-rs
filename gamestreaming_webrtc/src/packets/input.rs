@@ -32,6 +32,66 @@ struct InputRumblePacket {
     repeat: u8,
 }
 
+#[derive(Debug, PartialEq, DekuRead, DekuWrite)]
+#[deku(endian = "little")]
+struct InputMetadataEntry {
+    server_data_key: u32,
+    first_frame_packet_arrival_time_ms: u32,
+    frame_submitted_time_ms: u32,
+    frame_decoded_time_ms: u32,
+    frame_rendered_time_ms: u32,
+    frame_packet_time: u32,
+    frame_date_now: u32,
+}
+
+#[derive(Debug, PartialEq, DekuRead, DekuWrite)]
+#[deku(endian = "little")]
+struct InputMetadata {
+    report_type: u8,
+    sequence_num: u32,
+    timestamp: f64,
+    #[deku(update = "self.metadata.len()")]
+    queue_len: u8,
+    #[deku(count = "queue_len")]
+    metadata: Vec<InputMetadataEntry>
+}
+
+#[derive(Debug, PartialEq, DekuRead, DekuWrite)]
+#[deku(endian = "little")]
+struct GamepadData {
+    gamepad_index: u8,
+    button_mask: u16,
+    left_thumb_x: i16,
+    left_thumb_y: i16,
+    right_thumb_x: i16,
+    right_thumb_y: i16,
+    left_trigger: u16,
+    right_trigger: u16,
+    physical_physicality: u32,
+    virtual_physicality: u32,
+}
+
+#[derive(Debug, PartialEq, DekuRead, DekuWrite)]
+#[deku(endian = "little")]
+struct InputGamepad {
+    report_type: u8,
+    sequence_num: u32,
+    timestamp: f64,
+    #[deku(update = "self.gamepad_data.len()")]
+    queue_len: u8,
+    #[deku(count = "queue_len")]
+    gamepad_data: Vec<GamepadData>,
+}
+
+#[derive(Debug, PartialEq, DekuRead, DekuWrite)]
+#[deku(endian = "little")]
+struct InputClientMetadata {
+    report_type: u8,
+    sequence_num: u32,
+    timestamp: f64,
+    metadata: u8,
+}
+
 impl InputRumblePacket {
     fn get_report_type(&self) -> Result<BitFlags<InputReportType>, FlagsError<InputReportType>> {
         BitFlags::from_bits(self.report_type).map_err(FlagsError::DeserializeError)
