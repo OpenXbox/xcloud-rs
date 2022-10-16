@@ -14,7 +14,7 @@ pub enum GssvApiError {
 }
 
 /// Gamestreaming API Client
-struct GssvApi {
+pub struct GssvApi {
     client: Client,
     base_url: Url,
     platform: &'static str,
@@ -527,104 +527,104 @@ struct DeviceInfo {
 
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
-struct OfferingRegion {
-    name: String,
-    base_uri: String,
-    network_test_hostname: Option<String>,
-    is_default: bool,
-    system_update_groups: Option<Vec<String>>,
-    fallback_priority: i32,
+pub struct OfferingRegion {
+    pub name: String,
+    pub base_uri: String,
+    pub network_test_hostname: Option<String>,
+    pub is_default: bool,
+    pub system_update_groups: Option<Vec<String>>,
+    pub fallback_priority: i32,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "PascalCase")]
-struct CloudEnvironment {
-    name: String,
-    auth_base_uri: Option<String>,
+pub struct CloudEnvironment {
+    pub name: String,
+    pub auth_base_uri: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "PascalCase")]
-struct ClientCloudSettings {
-    environments: Vec<CloudEnvironment>,
+pub struct ClientCloudSettings {
+    pub environments: Vec<CloudEnvironment>,
 }
 
 /* Responses */
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
-struct OfferingSettings {
-    allow_region_selection: bool,
-    regions: Vec<OfferingRegion>,
-    selectable_server_types: Option<Vec<String>>,
-    client_cloud_settings: ClientCloudSettings,
+pub struct OfferingSettings {
+    pub allow_region_selection: bool,
+    pub regions: Vec<OfferingRegion>,
+    pub selectable_server_types: Option<Vec<String>>,
+    pub client_cloud_settings: ClientCloudSettings,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
-struct LoginResponse {
-    offering_settings: OfferingSettings,
-    market: String,
-    gs_token: String,
-    token_type: String,
-    duration_in_seconds: u32,
+pub struct LoginResponse {
+    pub offering_settings: OfferingSettings,
+    pub market: String,
+    pub gs_token: String,
+    pub token_type: String,
+    pub duration_in_seconds: u32,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
-struct ConsolesResponse {
-    total_items: u32,
-    continuation_token: Option<String>,
+pub struct ConsolesResponse {
+    pub total_items: u32,
+    pub continuation_token: Option<String>,
     // TODO
-    results: Vec<String>,
+    pub results: Vec<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
-struct TitleTab {
-    id: String,
-    tab_version: String,
-    layout_version: String,
-    manifest_version: String,
+pub struct TitleTab {
+    pub id: String,
+    pub tab_version: String,
+    pub layout_version: String,
+    pub manifest_version: String,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
-struct TitleDetails {
-    product_id: String,
-    xbox_title_id: String,
-    has_entitlement: bool,
-    blocked_by_family_safety: bool,
-    supports_in_app_purchases: bool,
-    supported_tabs: Option<TitleTab>,
-    native_touch: bool,
-    opt_out_of_default_layout_touch_controls: bool,
-    programs: Vec<String>,
-    is_free_in_store: bool,
+pub struct TitleDetails {
+    pub product_id: String,
+    pub xbox_title_id: String,
+    pub has_entitlement: bool,
+    pub blocked_by_family_safety: bool,
+    pub supports_in_app_purchases: bool,
+    pub supported_tabs: Option<TitleTab>,
+    pub native_touch: bool,
+    pub opt_out_of_default_layout_touch_controls: bool,
+    pub programs: Vec<String>,
+    pub is_free_in_store: bool,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
-struct TitleResult {
-    title_id: String,
-    details: TitleDetails,
+pub struct TitleResult {
+    pub title_id: String,
+    pub details: TitleDetails,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
-struct TitlesResponse {
-    e_tag: String,
-    total_items: u32,
-    results: Vec<TitleResult>,
-    continuation_token: Option<String>,
+pub struct TitlesResponse {
+    pub e_tag: String,
+    pub total_items: u32,
+    pub results: Vec<TitleResult>,
+    pub continuation_token: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
-struct SessionResponse {
+pub struct SessionResponse {
     session_path: String,
 }
 
-enum SessionState {
+pub enum SessionState {
     WaitingForResources,
     ReadyToConnect,
     Provisioning,
@@ -633,23 +633,23 @@ enum SessionState {
 
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
-struct SessionStateResponse {
-    state: String,
-    error_details: Option<String>,
+pub struct SessionStateResponse {
+    pub state: String,
+    pub error_details: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
-struct ExchangeResponse {
-    exchange_response: String,
-    error_details: Option<String>,
+pub struct ExchangeResponse {
+    pub exchange_response: String,
+    pub error_details: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
-struct KeepaliveResponse {
-    alive_seconds: Option<u32>,
-    reason: String,
+pub struct KeepaliveResponse {
+    pub alive_seconds: Option<u32>,
+    pub reason: String,
 }
 
 #[cfg(test)]
