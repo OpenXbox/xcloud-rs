@@ -105,7 +105,7 @@ impl RequestSigner {
         let signature = self
             .sign(
                 self.signing_policy.version,
-                timestamp.unwrap_or(Utc::now()),
+                timestamp.unwrap_or_else(Utc::now),
                 to_sign,
             )
             .expect("Signing request failed!");
@@ -175,6 +175,7 @@ impl RequestSigner {
         })
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn assemble_message_data(
         &self,
         signing_policy_version: &[u8],
