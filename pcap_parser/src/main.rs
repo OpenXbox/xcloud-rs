@@ -53,7 +53,7 @@ impl PcapParser {
             if stun::message::is_message(payload) {
                 let mut stun_msg = stun::message::Message::new();
                 stun_msg.raw = payload.to_vec();
-                if let Ok(_) = stun_msg.decode() {
+                if stun_msg.decode().is_ok() {
                     println!("STUN Packet: {}", stun_msg);
                 } else {
                     println!("Malformed STUN packet");
@@ -211,7 +211,6 @@ fn main() {
         } else {
             let dummy_key = "RdHzuLLVGuO1aHILIEVJ1UzR7RWVioepmpy+9SRf";
             crypto::MsSrtpCryptoContext::from_base64(dummy_key)
-                .ok()
                 .expect("Failed to init dummy crypto context")
         }
     };
@@ -256,10 +255,10 @@ fn main() {
 
                     let mut plaintext_eth_data: Vec<u8> = vec![];
                     plaintext_eth_data
-                        .write(&pcap_packet.data[..datasize_until_ciphertext])
+                        .write_all(&pcap_packet.data[..datasize_until_ciphertext])
                         .expect("Failed to write packet data until ciphertext");
                     plaintext_eth_data
-                        .write(&plaintext)
+                        .write_all(&plaintext)
                         .expect("Failed to write decrypted ciphertext portion");
 
                     // Save decrypted RTP packet to pcap out
@@ -275,9 +274,8 @@ fn main() {
             }
         } else {
             // Write non-RTP packet as-is
-            match pcap_out_handle.as_mut() {
-                Some(savefile) => savefile.write(&pcap_packet),
-                None => {}
+            if let Some(savefile) = pcap_out_handle.as_mut() {
+                savefile.write(&pcap_packet)
             }
         }
     }

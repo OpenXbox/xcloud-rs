@@ -1,20 +1,36 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::convert::Into;
+use std::convert::From;
 
 #[derive(Debug, Serialize, Deserialize, Copy, Clone)]
 pub enum DeviceType {
+    UNKNOWN,
     IOS,
     ANDROID,
     WIN32,
 }
 
+impl From<&str> for DeviceType {
+    fn from(s: &str) -> Self {
+        match s.to_lowercase().as_ref() {
+            "android" => DeviceType::ANDROID,
+            "ios" => DeviceType::IOS,
+            "win32" => DeviceType::WIN32,
+            _ => DeviceType::UNKNOWN,
+        }
+    }
+}
+
+#[allow(clippy::from_over_into)]
 impl<'a> Into<&'a str> for DeviceType {
     fn into(self) -> &'a str {
         match self {
             DeviceType::ANDROID => "Android",
             DeviceType::IOS => "iOS",
             DeviceType::WIN32 => "Win32",
+            DeviceType::UNKNOWN => {
+                panic!("DeviceType::UNKNOWN should nevert be constructed")
+            }
         }
     }
 }

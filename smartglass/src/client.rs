@@ -34,13 +34,13 @@ impl SmartglassClient {
         let client_builder = reqwest::ClientBuilder::new();
         let client = client_builder
             .user_agent(
-                user_agent.unwrap_or("Xbox/2008.0915.0311 CFNetwork/1197 Darwin/20.0.0".to_owned()),
+                user_agent.unwrap_or_else(||"Xbox/2008.0915.0311 CFNetwork/1197 Darwin/20.0.0".to_owned()),
             )
             .default_headers(headers)
             .build()?;
 
         Ok(Self {
-            session_id: session_id.unwrap_or(uuid::Uuid::new_v4()),
+            session_id: session_id.unwrap_or_else(uuid::Uuid::new_v4),
             request_signer: request_signer::RequestSigner::default(),
             ms_cv: CorrelationVector::default(),
             client,

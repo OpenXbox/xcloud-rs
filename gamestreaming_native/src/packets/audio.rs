@@ -9,8 +9,8 @@ pub enum AudioPacketType {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AudioCodec {
     Opus = 0,
-    PCM = 1,
-    AAC = 2,
+    Pcm = 1,
+    Aac = 2,
 }
 
 bitflags! {

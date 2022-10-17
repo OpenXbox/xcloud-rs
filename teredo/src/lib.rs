@@ -136,8 +136,8 @@ mod test {
         let ipv6 = Ipv6Addr::from_str("2001:0:338c:24f4:43b:30e3:d2f3:c93d").unwrap();
         let ipv6_not_teredo = Ipv6Addr::from_str("2019:0:338c:24f4:43b:30e3:d2f3:c93d").unwrap();
 
-        assert_eq!(ipv6.is_teredo(), true);
-        assert_eq!(ipv6_not_teredo.is_teredo(), false);
+        assert!(ipv6.is_teredo());
+        assert!(!ipv6_not_teredo.is_teredo());
     }
 
     #[test]

@@ -26,7 +26,7 @@ pub enum ChannelType {
     QoS,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub enum ChannelPacket {
     Audio(audio::AudioPacket),
     Video(video::VideoPacket),
