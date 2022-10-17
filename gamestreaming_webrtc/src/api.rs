@@ -389,7 +389,7 @@ struct GssvSessionSettings {
 
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
-struct GssvSessionConfig {
+pub struct GssvSessionConfig {
     title_id: String,
     system_update_group: String,
     settings: GssvSessionSettings,

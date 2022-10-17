@@ -43,9 +43,9 @@ impl GamestreamingClient {
 
     pub async fn start_stream(&self, _target: &str) {}
 
-    async fn exchange_ice(&self) {}
+    pub async fn exchange_ice(&self) {}
 
-    async fn exchange_sdp(&self) {}
+    pub async fn exchange_sdp(&self) {}
 }
 
 #[cfg(test)]
