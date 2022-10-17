@@ -96,6 +96,7 @@ impl Deserialize for ConnectionProbingPacket {
 #[cfg(test)]
 mod test {
     use super::*;
+    use std::io::Cursor;
 
     #[test]
     fn test_deserialize_connection_probing_syn() {
