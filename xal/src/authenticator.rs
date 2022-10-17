@@ -11,7 +11,7 @@ use oauth2::{
         BasicErrorResponse, BasicRevocationErrorResponse, BasicTokenIntrospectionResponse,
         BasicTokenType,
     },
-    reqwest::{async_http_client},
+    reqwest::async_http_client,
     url, AccessToken, AuthType, AuthUrl, AuthorizationCode, Client as OAuthClient, ClientId,
     EmptyExtraTokenFields, ExtraTokenFields, PkceCodeChallenge, PkceCodeVerifier, RedirectUrl,
     RefreshToken, Scope, StandardRevocableToken, TokenResponse, TokenType, TokenUrl,
