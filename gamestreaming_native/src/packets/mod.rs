@@ -18,7 +18,7 @@ use webrtc::rtp;
 use mux_dct_control::MuxDCTControlPacket;
 use serializing::Deserialize;
 use udp_connection_probing::{
-    ConnectionProbingAck, ConnectionProbingPacket, ConnectionProbingSyn, ConnectionProbingType,
+    ConnectionProbingPacket,
 };
 
 #[derive(Debug, Clone, PartialEq)]

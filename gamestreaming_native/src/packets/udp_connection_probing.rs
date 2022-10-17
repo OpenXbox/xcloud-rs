@@ -1,9 +1,9 @@
 use byteorder::*;
-use std::convert::{From, Into, TryFrom, TryInto};
-use std::io;
-use std::io::{Cursor, Read, Seek, SeekFrom, Write};
+use std::convert::{From, TryInto};
 
-use super::serializing::{Deserialize, Serialize};
+use std::io::{Read, Seek, SeekFrom};
+
+use super::serializing::{Deserialize};
 
 type Error = Box<dyn std::error::Error>;
 type Result<T> = std::result::Result<T, Error>;

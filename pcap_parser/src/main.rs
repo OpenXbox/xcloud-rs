@@ -10,15 +10,15 @@ use gamestreaming_native::teredo::{Teredo, TeredoEndpoint};
 use gamestreaming_native::webrtc::rtp;
 use gamestreaming_native::webrtc::stun;
 use gamestreaming_native::webrtc::util::Unmarshal;
-use pcap::{Capture, Linktype, Savefile};
-use std::fs::File;
+use pcap::{Capture, Linktype};
+
 use std::io::prelude::*;
-use std::io::BufWriter;
-use std::io::Cursor;
+
+
 use std::net::IpAddr;
 use std::path::PathBuf;
 /// Based on libpnet sample: https://github.com/libpnet/libpnet/blob/master/examples/packetdump.rs
-use std::{convert::TryInto, io::BufReader};
+use std::{convert::TryInto};
 use structopt::StructOpt;
 
 type Error = Box<dyn std::error::Error>;
@@ -46,7 +46,7 @@ impl PcapParser {
         source: (IpAddr, MacAddr),
         destination: (IpAddr, MacAddr),
         packet: &[u8],
-        teredo_wrapped: bool,
+        _teredo_wrapped: bool,
     ) -> Result<Vec<u8>> {
         if let Some(udp) = UdpPacket::new(packet) {
             let mut payload = udp.payload();
@@ -114,7 +114,7 @@ impl PcapParser {
                         let source_mac = ethernet.get_source();
                         let dest_addr = IpAddr::V4(header.get_destination());
                         let dest_mac = ethernet.get_destination();
-                        let protocol = header.get_next_level_protocol();
+                        let _protocol = header.get_next_level_protocol();
                         let payload = header.payload();
 
                         if let Ok(rtp_packet) = self.handle_udp_packet(
@@ -138,7 +138,7 @@ impl PcapParser {
                         let source_mac = ethernet.get_source();
                         let dest_addr = IpAddr::V6(header.get_destination());
                         let dest_mac = ethernet.get_destination();
-                        let protocol = header.get_next_header();
+                        let _protocol = header.get_next_header();
                         let payload = header.payload();
 
                         if let Ok(rtp_packet) = self.handle_udp_packet(
