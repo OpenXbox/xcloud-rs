@@ -99,8 +99,6 @@ fn main() -> wry::Result<()> {
         .with_url(&auth_url)?
         .with_devtools(true)
         .with_navigation_handler(move |uri: String| {
-            
-
             proxy.send_event(UserEvent::Navigation(uri)).is_ok()
         })
         .build()?;
