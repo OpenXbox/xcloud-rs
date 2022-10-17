@@ -41,7 +41,7 @@ impl GamestreamingClient {
         self.xhome.get_consoles().await.map_err(GsError::ApiError)
     }
 
-    pub async fn start_stream(&self, target: &str) {}
+    pub async fn start_stream(&self, _target: &str) {}
 
     async fn exchange_ice(&self) {}
 

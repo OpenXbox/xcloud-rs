@@ -1,15 +1,14 @@
 use byteorder::*;
 use std::{
-    convert::{From, TryInto},
-    io::{Read, Seek, Write},
+    io::{Read, Seek},
 };
 
 use crate::{
-    crypto::{MsSrtpCryptoContext, OneShotHasher},
-    packets::serializing::{Deserialize, Serialize},
+    crypto::{OneShotHasher},
+    packets::serializing::{Deserialize},
 };
 
-use hmac::{Hmac, Mac};
+use hmac::{Hmac};
 use sha2::Sha256;
 
 type Error = Box<dyn std::error::Error>;
@@ -111,7 +110,7 @@ mod test {
             .expect("Failed to create MS-SRTP context");
 
         // First two bytes of the udp payload is salt / connection id
-        let ping_signing_ctx = ctx
+        let _ping_signing_ctx = ctx
             .get_ping_signing_ctx(&packet_data[..2])
             .expect("Failed to get ping signing context");
 

@@ -1,5 +1,5 @@
 use pnet::packet::ipv6;
-use std::convert::{From, TryFrom, TryInto};
+use std::convert::{TryFrom, TryInto};
 use std::net::{Ipv4Addr, Ipv6Addr};
 
 type Error = Box<dyn std::error::Error>;

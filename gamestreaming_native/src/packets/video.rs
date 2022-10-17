@@ -1,12 +1,12 @@
 use byteorder::*;
 use std::{
     convert::{From, TryInto},
-    io::{Read, Seek, Write},
+    io::{Read, Seek},
 };
 
-use crate::packets::serializing::{Deserialize, Serialize};
+use crate::packets::serializing::{Deserialize};
 
-use super::message;
+
 
 type Error = Box<dyn std::error::Error>;
 type Result<T> = std::result::Result<T, Error>;
@@ -428,7 +428,7 @@ mod test {
         println!("{:?}", packet);
         match packet {
             VideoPacket::Control(control_pkt) => {
-                let flags: VideoControlFlags = VideoControlFlags::from_bits(control_pkt.flags)
+                let _flags: VideoControlFlags = VideoControlFlags::from_bits(control_pkt.flags)
                     .expect("Failed to parse VideoControlFlags");
 
                 panic!("VideoControl struct is not correct yet");
