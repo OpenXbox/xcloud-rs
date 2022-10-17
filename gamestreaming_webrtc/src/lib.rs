@@ -1,8 +1,9 @@
 pub mod api;
 pub mod error;
 mod packets;
+mod serde_helpers;
 
-use api::{TitleResult, ConsolesResponse};
+use api::{ConsolesResponse, TitleResult};
 
 use crate::api::GssvApi;
 use crate::error::GsError;
@@ -37,10 +38,7 @@ impl GamestreamingClient {
     }
 
     pub async fn lookup_consoles(&self) -> Result<ConsolesResponse, GsError> {
-        self.xhome
-            .get_consoles()
-            .await
-            .map_err(GsError::ApiError)
+        self.xhome.get_consoles().await.map_err(GsError::ApiError)
     }
 
     pub async fn start_stream(&self, target: &str) {}
