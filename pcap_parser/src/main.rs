@@ -14,11 +14,10 @@ use pcap::{Capture, Linktype};
 
 use std::io::prelude::*;
 
-
+/// Based on libpnet sample: https://github.com/libpnet/libpnet/blob/master/examples/packetdump.rs
+use std::convert::TryInto;
 use std::net::IpAddr;
 use std::path::PathBuf;
-/// Based on libpnet sample: https://github.com/libpnet/libpnet/blob/master/examples/packetdump.rs
-use std::{convert::TryInto};
 use structopt::StructOpt;
 
 type Error = Box<dyn std::error::Error>;

@@ -4,9 +4,7 @@ use std::{
     io::{Read, Seek},
 };
 
-use crate::packets::serializing::{Deserialize};
-
-
+use crate::packets::serializing::Deserialize;
 
 type Error = Box<dyn std::error::Error>;
 type Result<T> = std::result::Result<T, Error>;

@@ -3,7 +3,7 @@ use std::convert::{From, TryInto};
 
 use std::io::{Read, Seek, SeekFrom};
 
-use super::serializing::{Deserialize};
+use super::serializing::Deserialize;
 
 type Error = Box<dyn std::error::Error>;
 type Result<T> = std::result::Result<T, Error>;

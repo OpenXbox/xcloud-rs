@@ -1,14 +1,9 @@
 use byteorder::*;
-use std::{
-    io::{Read, Seek},
-};
+use std::io::{Read, Seek};
 
-use crate::{
-    crypto::{OneShotHasher},
-    packets::serializing::{Deserialize},
-};
+use crate::{crypto::OneShotHasher, packets::serializing::Deserialize};
 
-use hmac::{Hmac};
+use hmac::Hmac;
 use sha2::Sha256;
 
 type Error = Box<dyn std::error::Error>;
@@ -96,9 +91,9 @@ impl Deserialize for PingPacket {
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::crypto::MsSrtpCryptoContext;
     use hex;
     use std::io::Cursor;
-    use crate::crypto::MsSrtpCryptoContext;
 
     #[test]
     fn deserialize_ping_packet() {
