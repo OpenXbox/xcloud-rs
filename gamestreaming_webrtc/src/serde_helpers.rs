@@ -49,9 +49,9 @@ pub mod json_string {
 ///
 /// FIXME: Remove this workaround, handle it in some better way
 pub mod json_string_ice_workaround {
-    use serde::Deserialize;
     use serde::de::{self, DeserializeOwned, Deserializer};
-    use serde_json::{self, Value, json, Map};
+    use serde::Deserialize;
+    use serde_json::{self, json, Map, Value};
 
     pub fn deserialize<'de, T, D>(deserializer: D) -> Result<T, D::Error>
     where
@@ -61,40 +61,51 @@ pub mod json_string_ice_workaround {
         fn deserialize_str_into_num(val: Value) -> Value {
             match val {
                 Value::String(str) => {
-                    if let Ok(num) = str.parse::<u8>() { json!(num) }
-                    else if let Ok(num) = str.parse::<i8>() { json!(num) }
-                    else if let Ok(num) = str.parse::<u16>() { json!(num) }
-                    else if let Ok(num) = str.parse::<i16>() { json!(num) }
-                    else if let Ok(num) = str.parse::<u32>() { json!(num) }
-                    else if let Ok(num) = str.parse::<i32>() { json!(num) }
-                    else if let Ok(num) = str.parse::<u64>() { json!(num) }
-                    else if let Ok(num) = str.parse::<i64>() { json!(num) }
-                    else if let Ok(num) = str.parse::<u128>() { json!(num) }
-                    else if let Ok(num) = str.parse::<i128>() { json!(num) }
-                    else { Value::String(str) }
-                },
-                _ => panic!("Expecting Value::String")
+                    if let Ok(num) = str.parse::<u8>() {
+                        json!(num)
+                    } else if let Ok(num) = str.parse::<i8>() {
+                        json!(num)
+                    } else if let Ok(num) = str.parse::<u16>() {
+                        json!(num)
+                    } else if let Ok(num) = str.parse::<i16>() {
+                        json!(num)
+                    } else if let Ok(num) = str.parse::<u32>() {
+                        json!(num)
+                    } else if let Ok(num) = str.parse::<i32>() {
+                        json!(num)
+                    } else if let Ok(num) = str.parse::<u64>() {
+                        json!(num)
+                    } else if let Ok(num) = str.parse::<i64>() {
+                        json!(num)
+                    } else if let Ok(num) = str.parse::<u128>() {
+                        json!(num)
+                    } else if let Ok(num) = str.parse::<i128>() {
+                        json!(num)
+                    } else {
+                        Value::String(str)
+                    }
+                }
+                _ => panic!("Expecting Value::String"),
             }
         }
 
         fn deserialize_recursive(val: Value) -> Value {
             match val {
                 Value::String(str) => deserialize_str_into_num(Value::String(str)),
-                Value::Array(arr) => {
-                    arr.into_iter().map(|val| {
-                        deserialize_recursive(val)
-                    }).collect()
-                },
+                Value::Array(arr) => arr.into_iter().map(deserialize_recursive).collect(),
                 Value::Object(obj) => {
-                    let res = obj.into_iter().map(|(key,val)|{
-                        if key == "sdpMLineIndex" {
-                            return (key, deserialize_recursive(val));
-                        }
-                        (key, val)
-                    }).collect::<Map<String, Value>>();
+                    let res = obj
+                        .into_iter()
+                        .map(|(key, val)| {
+                            if key == "sdpMLineIndex" {
+                                return (key, deserialize_recursive(val));
+                            }
+                            (key, val)
+                        })
+                        .collect::<Map<String, Value>>();
                     Value::Object(res)
-                },
-                v => v
+                }
+                v => v,
             }
         }
 
