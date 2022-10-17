@@ -28,5 +28,8 @@ jobs:
       - name: Test
         run: cargo test
 
-      - name: Lint
+      - name: Check formatting
         run: cargo fmt --check
+
+      - name: Analyze code smells
+        run: cargo clippy
