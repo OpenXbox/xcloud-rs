@@ -99,7 +99,7 @@ impl RequestSigner {
             method: &request.method().to_string().to_uppercase(),
             path_and_query: &url[Position::BeforePath..],
             authorization: auth_header_val,
-            body: body,
+            body,
         };
 
         let signature = self
@@ -171,7 +171,7 @@ impl RequestSigner {
         Ok(XboxWebSignatureBytes {
             signing_policy_version: signing_policy_version_bytes.to_vec(),
             timestamp: filetime_bytes.to_vec(),
-            signed_digest: signed_digest,
+            signed_digest,
         })
     }
 
@@ -223,7 +223,7 @@ mod test {
     use chrono::prelude::*;
     use hex_literal::hex;
 
-    const PRIVATE_KEY_PEM: &'static str = "-----BEGIN EC PRIVATE KEY-----\n
+    const PRIVATE_KEY_PEM: &str = "-----BEGIN EC PRIVATE KEY-----\n
     MHcCAQEEIObr5IVtB+DQcn25+R9n4K/EyUUSbVvxIJY7WhVeELUuoAoGCCqGSM49\n
     AwEHoUQDQgAEOKyCQ9qH5U4lZcS0c5/LxIyKvOpKe0l3x4Eg5OgDbzezKNLRgT28\n
     fd4Fq3rU/1OQKmx6jSq0vTB5Ao/48m0iGg==\n
@@ -307,7 +307,7 @@ mod test {
 
         let signature = request.headers().get("Signature");
 
-        assert!(!signature.is_none());
+        assert!(signature.is_some());
         assert_eq!(
             signature.unwrap(),
             "AAAAAQHWE40Q98yAFe3R7GuZfvGA350cH7hWgg4HIHjaD9lGYiwxki6bNyGnB8dMEIfEmBiuNuGUfWjY5lL2h44X/VMGOkPIezVb7Q=="

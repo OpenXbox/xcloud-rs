@@ -1,4 +1,4 @@
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum QosPacketType {
     ServerHandshake = 1,
     ClientHandshake = 2,
@@ -14,7 +14,7 @@ bitflags! {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct QosServerPolicy {
     pub schema_version: u32,
     pub policy_length: u32,
@@ -23,35 +23,35 @@ pub struct QosServerPolicy {
     pub fragment_size: u32,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct QosServerHandshake {
     pub protocol_version: u32,
     pub min_supported_client_version: Option<u32>, // if protocol_version >= 1
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct QosClientPolicy {
     pub schema_version: u32,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct QosClientHandshake {
     pub protocol_version: u32,
     pub initial_frame_id: u32,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct QosControl {
     pub flags: u32,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct QosData {
     pub flags: u32,
     pub frame_id: u32,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum QosPacket {
     ServerHandshake(QosServerHandshake),
     ClientHandshake(QosClientHandshake),

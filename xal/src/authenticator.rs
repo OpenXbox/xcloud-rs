@@ -117,7 +117,7 @@ impl Default for XalAuthenticator {
             client_params: app_params,
             ms_cv: cvlib::CorrelationVector::new(),
             client: reqwest::Client::new(),
-            client2: client2,
+            client2,
             request_signer: request_signer::RequestSigner::default(),
         }
     }
@@ -289,7 +289,7 @@ impl XalAuthenticator {
             app_id: self.client_params.app_id,
             title_id: self.client_params.title_id,
             redirect_uri: self.client_params.redirect_uri,
-            device_token: device_token,
+            device_token,
             sandbox: "RETAIL",
             token_type: "code",
             offers: vec!["service::user.auth.xboxlive.com::MBI_SSL"],
@@ -297,7 +297,7 @@ impl XalAuthenticator {
                 display: self.client_params.query_display,
                 code_challenge: code_challenge.as_str(),
                 code_challenge_method: code_challenge.method(),
-                state: state,
+                state,
             },
         };
 
@@ -332,7 +332,7 @@ impl XalAuthenticator {
         let json_body = request::SisuAuthorizationRequest {
             access_token: &format!("t={}", access_token),
             app_id: self.client_params.app_id,
-            device_token: device_token,
+            device_token,
             sandbox: "RETAIL",
             site_name: "user.auth.xboxlive.com",
             session_id: sisu_session_id,
@@ -367,12 +367,12 @@ impl XalAuthenticator {
         headers.insert("MS-CV", self.next_cv().parse()?);
 
         let json_body = request::XSTSRequest {
-            relying_party: relying_party,
+            relying_party,
             token_type: "JWT",
             properties: request::XSTSProperties {
                 sandbox_id: "RETAIL",
-                device_token: device_token,
-                title_token: title_token,
+                device_token,
+                title_token,
                 user_tokens: vec![user_token],
             },
         };

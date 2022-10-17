@@ -9,7 +9,7 @@ use crate::packets::serializing::Deserialize;
 type Error = Box<dyn std::error::Error>;
 type Result<T> = std::result::Result<T, Error>;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 #[repr(u32)]
 pub enum VideoPacketType {
     ServerHandshake = 1,
@@ -26,7 +26,7 @@ impl From<u32> for VideoPacketType {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 #[repr(u32)]
 pub enum VideoCodec {
     H264 = 0,
@@ -64,7 +64,7 @@ bitflags! {
         const JITTER_INFO = 0x10;
     }
 }
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RGBVideoFormat {
     pub bpp: u32,
     pub unknown: u32,
@@ -91,7 +91,7 @@ impl Deserialize for RGBVideoFormat {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VideoFormat {
     pub fps: u32,
     pub width: u32,
@@ -122,7 +122,7 @@ impl Deserialize for VideoFormat {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VideoServerHandshake {
     pub unknown1: u32,
     pub unknown2: u32,
@@ -160,12 +160,12 @@ impl Deserialize for VideoServerHandshake {
             fps,
             reference_timestamp,
             format_count,
-            formats: formats,
+            formats,
         })
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VideoClientHandshake {
     pub unknown1: u32,
     pub unknown2: u32,
@@ -189,7 +189,7 @@ impl Deserialize for VideoClientHandshake {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VideoControl {
     pub flags: u32,
     // Tuple
@@ -281,7 +281,7 @@ impl Deserialize for VideoControl {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VideoData {
     pub unknown1: u32,
     pub unknown2: u32,
@@ -335,7 +335,7 @@ impl Deserialize for VideoData {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum VideoPacket {
     ServerHandshake(VideoServerHandshake),
     ClientHandshake(VideoClientHandshake),

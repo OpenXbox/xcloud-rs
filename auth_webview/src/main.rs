@@ -24,7 +24,7 @@ async fn continue_auth(
     println!("Authorization Code: {}", &authorization_code);
     let local_code_verifier = PkceCodeVerifier::new(code_verifier.secret().clone());
     let wl_token = xal
-        .exchange_code_for_token(&authorization_code, local_code_verifier)
+        .exchange_code_for_token(authorization_code, local_code_verifier)
         .await
         .expect("Failed exchanging code for token");
     println!("WL={:?}", wl_token);
@@ -99,9 +99,9 @@ fn main() -> wry::Result<()> {
         .with_url(&auth_url)?
         .with_devtools(true)
         .with_navigation_handler(move |uri: String| {
-            let submitted = proxy.send_event(UserEvent::Navigation(uri.clone())).is_ok();
+            
 
-            submitted
+            proxy.send_event(UserEvent::Navigation(uri)).is_ok()
         })
         .build()?;
 

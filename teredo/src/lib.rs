@@ -95,7 +95,7 @@ impl TryFrom<Ipv6Addr> for TeredoEndpoint {
             Err("Not a teredo address")?
         }
 
-        Ok(value.octets().try_into()?)
+        value.octets().try_into()
     }
 }
 

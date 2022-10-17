@@ -8,7 +8,7 @@ use super::serializing::Deserialize;
 type Error = Box<dyn std::error::Error>;
 type Result<T> = std::result::Result<T, Error>;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ConnectionProbingSyn {
     pub msg_type: ConnectionProbingType,
     pub probe_data: Vec<u8>,
@@ -29,7 +29,7 @@ impl Deserialize for ConnectionProbingSyn {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ConnectionProbingAck {
     pub msg_type: ConnectionProbingType,
     pub accepted_packet_size: u16,
@@ -52,7 +52,7 @@ impl Deserialize for ConnectionProbingAck {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 #[repr(u16)]
 pub enum ConnectionProbingType {
     Syn = 1,
@@ -67,7 +67,7 @@ impl From<u16> for ConnectionProbingType {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ConnectionProbingPacket {
     Syn(ConnectionProbingSyn),
     Ack(ConnectionProbingAck),

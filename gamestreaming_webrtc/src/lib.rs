@@ -16,8 +16,8 @@ pub struct GamestreamingClient {
 impl GamestreamingClient {
     fn new(xhome: GssvApi, xcloud: GssvApi) -> Self {
         Self {
-            xhome: xhome,
-            xcloud: xcloud,
+            xhome,
+            xcloud,
         }
     }
 

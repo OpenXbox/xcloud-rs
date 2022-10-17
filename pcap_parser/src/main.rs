@@ -105,7 +105,7 @@ impl PcapParser {
     }
 
     fn handle_packet(&mut self, packet: &[u8]) -> Result<RtpPacketResult> {
-        if let Some(ethernet) = EthernetPacket::new(&packet) {
+        if let Some(ethernet) = EthernetPacket::new(packet) {
             match ethernet.get_ethertype() {
                 EtherTypes::Ipv4 => {
                     if let Some(header) = Ipv4Packet::new(ethernet.payload()) {
@@ -210,7 +210,7 @@ fn main() {
             crypto::MsSrtpCryptoContext::from_base64(&key).expect("Failed to init crypto context")
         } else {
             let dummy_key = "RdHzuLLVGuO1aHILIEVJ1UzR7RWVioepmpy+9SRf";
-            crypto::MsSrtpCryptoContext::from_base64(&dummy_key)
+            crypto::MsSrtpCryptoContext::from_base64(dummy_key)
                 .ok()
                 .expect("Failed to init dummy crypto context")
         }
@@ -232,7 +232,7 @@ fn main() {
     };
 
     while let Ok(pcap_packet) = cap.next_packet() {
-        if let Ok(rtp_response) = parser.handle_packet(&pcap_packet.data) {
+        if let Ok(rtp_response) = parser.handle_packet(pcap_packet.data) {
             // Handle RTP packet
             let packet = rtp_response.packet;
 
@@ -263,7 +263,7 @@ fn main() {
                         .expect("Failed to write decrypted ciphertext portion");
 
                     // Save decrypted RTP packet to pcap out
-                    savefile.write(&pcap::Packet::new(&pcap_packet.header, &plaintext_eth_data));
+                    savefile.write(&pcap::Packet::new(pcap_packet.header, &plaintext_eth_data));
                 }
                 None => {
                     let mut payload = &packet[..];

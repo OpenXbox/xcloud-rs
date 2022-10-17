@@ -11,7 +11,7 @@ use crate::packets::{audio, input, qos, video};
 /// Microsoft::Basix::Dct::Channel::Class::Control
 /// Microsoft::Basix::Dct::Channel::Class::Messaging
 /// Microsoft::Basix::Dct::Channel::Class::QoS
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ChannelType {
     Base,
 

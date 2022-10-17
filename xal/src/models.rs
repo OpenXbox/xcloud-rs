@@ -19,7 +19,7 @@ impl<'a> Into<&'a str> for DeviceType {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Copy, Clone, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, Copy, Clone, PartialEq, Eq)]
 pub enum SigningAlgorithm {
     ES256,
     ES384,
@@ -210,7 +210,7 @@ pub mod response {
 
     impl XSTSResponse {
         pub fn userhash(&self) -> String {
-            (&self.display_claims.xui[0]["uhs"]).clone()
+            self.display_claims.xui[0]["uhs"].clone()
         }
         pub fn authorization_header_value(&self) -> String {
             format!("XBL3.0 x={};{}", self.userhash(), self.token_data.token)
@@ -325,7 +325,7 @@ mod test {
         "#;
 
         let bla: response::XSTSResponse =
-            serde_json::from_str(&data).expect("BUG: Failed to deserialize XSTS response");
+            serde_json::from_str(data).expect("BUG: Failed to deserialize XSTS response");
 
         assert_eq!(bla.userhash(), "abcdefg");
         assert_eq!(

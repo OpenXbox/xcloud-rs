@@ -19,7 +19,7 @@ use mux_dct_control::MuxDCTControlPacket;
 use serializing::Deserialize;
 use udp_connection_probing::ConnectionProbingPacket;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 #[repr(u8)]
 pub enum PayloadType {
     Unknown = 0x0,
@@ -44,7 +44,7 @@ impl From<u8> for PayloadType {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 #[repr(u8)]
 pub enum ControlProtocolMessageOpCode {
     Auth = 0x1,

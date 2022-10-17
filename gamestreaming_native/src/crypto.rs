@@ -107,7 +107,7 @@ impl MsSrtpCryptoContext {
             &mut hmac_key,
         )?;
 
-        Ok(MsSrtpCryptoContext::get_keyed_hasher(&hmac_key)?)
+        MsSrtpCryptoContext::get_keyed_hasher(&hmac_key)
     }
 
     pub fn decrypt_rtp_with_header(
