@@ -672,10 +672,10 @@ pub struct SdpExchangeResponse {
     pub error_details: Option<String>,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct IceExchangeResponse {
-    #[serde(with = "crate::serde_helpers::json_string")]
+    #[serde(with = "crate::serde_helpers::json_string_ice_workaround")]
     pub exchange_response: Vec<RTCIceCandidateInit>,
     pub error_details: Option<String>,
 }
@@ -788,16 +788,5 @@ mod tests {
         assert!(result.is_ok());
         let serialized = serde_json::to_string(&result.unwrap());
         assert!(serialized.is_ok());
-    }
-
-    #[test]
-    fn serialize_ice_response() {
-        let data = ice_response_message();
-        let result = serde_json::from_str::<IceExchangeResponse>(&data);
-        println!("{:?}", result);
-        assert!(result.is_ok());
-        let serialized = serde_json::to_string(&result.unwrap());
-        assert!(serialized.is_ok());
-        assert_eq!(data, serialized.unwrap());
     }
 }
