@@ -15,10 +15,7 @@ pub struct GamestreamingClient {
 
 impl GamestreamingClient {
     fn new(xhome: GssvApi, xcloud: GssvApi) -> Self {
-        Self {
-            xhome,
-            xcloud,
-        }
+        Self { xhome, xcloud }
     }
 
     pub async fn create(gssv_token: &str) -> Result<Self, GsError> {
