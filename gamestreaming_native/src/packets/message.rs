@@ -1,16 +1,16 @@
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MessagePacketType {
     Handshake = 1,
     Data = 2,
     CancelRequest = 3,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MessageHandshake {
     pub unknown: u32,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MessageData {
     pub unknown1: u32,
     pub unknown2: u32,
@@ -20,7 +20,7 @@ pub struct MessageData {
     pub unknown6: u32,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MessageCancelRequest {
     pub unknown: u32,
 }

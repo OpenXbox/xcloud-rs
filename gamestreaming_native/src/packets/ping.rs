@@ -9,7 +9,7 @@ use sha2::Sha256;
 type Error = Box<dyn std::error::Error>;
 type Result<T> = std::result::Result<T, Error>;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PingPayload {
     pub ping_type: u8,
     pub flags: u8,
@@ -70,7 +70,7 @@ impl Deserialize for PingPayload {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PingPacket {
     Request(PingPayload),
     Response(PingPayload),
@@ -144,7 +144,7 @@ mod test {
         let salt = &hex::decode("ffff").expect("Failed to hex-decode salt");
 
         let mut ping_signing_ctx = ctx
-            .get_ping_signing_ctx(&salt)
+            .get_ping_signing_ctx(salt)
             .expect("Failed to get ping signing context");
 
         let body = PingPayload::new_request(0, &mut ping_signing_ctx);

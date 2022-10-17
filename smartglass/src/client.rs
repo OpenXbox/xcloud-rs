@@ -43,7 +43,7 @@ impl SmartglassClient {
             session_id: session_id.unwrap_or(uuid::Uuid::new_v4()),
             request_signer: request_signer::RequestSigner::default(),
             ms_cv: CorrelationVector::default(),
-            client: client,
+            client,
         })
     }
 
@@ -129,11 +129,11 @@ impl SmartglassClient {
 
         let json_body = models::request::OneShotCommandRequest {
             destination: "Xbox".to_owned(),
-            command_type: command_type,
-            command: command,
+            command_type,
+            command,
             session_id: self.session_id.hyphenated().to_string(),
             source_id: "com.microsoft.smartglass".to_owned(),
-            parameters: parameters,
+            parameters,
             linked_xbox_id: console_live_id,
         };
 

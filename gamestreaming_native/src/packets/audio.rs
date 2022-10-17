@@ -1,4 +1,4 @@
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AudioPacketType {
     ServerHandshake = 1,
     ClientHandshake = 2,
@@ -6,7 +6,7 @@ pub enum AudioPacketType {
     Data = 4,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AudioCodec {
     Opus = 0,
     PCM = 1,
@@ -21,16 +21,16 @@ bitflags! {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AudioDataFlags {}
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PCMAudioFormat {
     pub bits: u32,
     pub is_float: u32,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AudioFormat {
     pub channels: u32,
     pub frequency: u32,
@@ -38,7 +38,7 @@ pub struct AudioFormat {
     pub pcm_format: Option<PCMAudioFormat>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AudioServerHandshake {
     pub protocol_version: u32,
     pub reference_timestamp: u64,
@@ -46,18 +46,18 @@ pub struct AudioServerHandshake {
     pub formats: Box<[AudioFormat]>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AudioClientHandshake {
     pub initial_frame_id: u32,
     pub requested_format: AudioFormat,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AudioControl {
     pub flags: u32,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AudioData {
     pub flags: u32,
     pub frame_id: u32,
@@ -66,7 +66,7 @@ pub struct AudioData {
     pub data: Vec<u8>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AudioPacket {
     ServerHandshake(AudioServerHandshake),
     ClientHandshake(AudioClientHandshake),

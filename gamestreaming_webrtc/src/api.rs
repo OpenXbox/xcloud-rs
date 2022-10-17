@@ -35,8 +35,8 @@ impl GssvApi {
                 .default_headers(headers)
                 .build()
                 .expect("Failed to build client"),
-            base_url: base_url,
-            platform: platform,
+            base_url,
+            platform,
         }
     }
 

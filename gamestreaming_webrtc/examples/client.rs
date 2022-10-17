@@ -14,7 +14,7 @@ Paste the GSSV Token and hit [ENTER]"#
     // Strip newline
     let gssv_token = gssv_token.strip_suffix('\n').unwrap();
 
-    let _ = GamestreamingClient::create(&gssv_token).await?;
+    let _ = GamestreamingClient::create(gssv_token).await?;
 
     todo!("Implement client");
 }

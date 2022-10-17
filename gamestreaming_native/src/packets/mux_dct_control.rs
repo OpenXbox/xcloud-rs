@@ -45,14 +45,14 @@ RTP: MuxDCTControl Seq: 11, ts: 0, ssrc: 1026
                                                        0000000e
 */
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ControlProtocolPacketType {
     Create = 2,
     Open = 3,
     Close = 4,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MuxDCTControlHeader {
     pub bla: u16,
     pub bla2: u16,
@@ -76,7 +76,7 @@ impl Deserialize for MuxDCTControlHeader {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MuxDCTControlPacket {
     JustHeader(MuxDCTControlHeader),
 }

@@ -29,7 +29,7 @@ impl<'a> DekuRead<'a> for InputReportTypeFlags {
     where
         Self: Sized,
     {
-        let (rest, flags) = u8::read(&input, ())?;
+        let (rest, flags) = u8::read(input, ())?;
         let res = BitFlags::from_bits(flags)
             .map_err(|_| DekuError::Parse("Failed to read input report type flags".into()))?;
 

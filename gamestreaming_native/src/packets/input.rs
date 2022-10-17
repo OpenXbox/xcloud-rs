@@ -1,4 +1,4 @@
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum InputPacketType {
     ServerHandshakeV3 = 1,
     ClientHandshakeV3 = 2,
@@ -10,7 +10,7 @@ pub enum InputPacketType {
     FrameV4 = 7,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InputServerHandshake {
     pub min_protocol_version: u32,
     pub max_protocol_version: u32,
@@ -20,7 +20,7 @@ pub struct InputServerHandshake {
     pub initial_frame_id: u32,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InputClientHandshake {
     pub min_protocol_version: u32,
     pub max_protocol_version: u32,
@@ -28,19 +28,19 @@ pub struct InputClientHandshake {
     pub reference_timestamp: u64,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InputFrameAck {
     pub acked_frame_id: u32,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InputFrameV3 {
     pub frame_id: u32,
     pub timestamp: i64,
     pub frame: FrameV3Data,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FrameV3Data {
     pub input_count: u32,
     pub unknown: Option<Vec<(u32, u32, u32)>>, // length: input_count
@@ -49,26 +49,26 @@ pub struct FrameV3Data {
     pub data_keyboard: Option<KeyboardData>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MouseData {}
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GamepadData {}
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct KeyboardData {}
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InputFrameV4 {
     pub frame_id: u32,
     pub timestamp: i64,
     pub frame_changes: FrameChanges,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FrameChanges {}
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum InputPacket {
     ServerHandshake(InputServerHandshake),
     ClientHandshake(InputClientHandshake),
