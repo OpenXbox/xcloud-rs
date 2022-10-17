@@ -98,6 +98,7 @@ mod test {
     use super::*;
     use hex;
     use std::io::Cursor;
+    use crate::crypto::MsSrtpCryptoContext;
 
     #[test]
     fn deserialize_ping_packet() {

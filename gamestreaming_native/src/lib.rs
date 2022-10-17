@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 pub extern crate byteorder;
 pub extern crate pnet;
 pub extern crate teredo;

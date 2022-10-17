@@ -180,7 +180,7 @@ impl PcapParser {
 struct Opt {
     /// Enable debug output
     #[structopt(short, long)]
-    debug: bool,
+    _debug: bool,
 
     /// Input file
     #[structopt(parse(from_os_str))]
