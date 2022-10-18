@@ -58,6 +58,7 @@ impl ToString for XboxWebSignatureBytes {
     }
 }
 
+#[derive(Debug)]
 pub struct HttpRequestToSign {
     method: String,
     path_and_query: String,
@@ -312,17 +313,19 @@ impl RequestSigner {
 
 #[cfg(test)]
 mod test {
-    use super::{reqwest, FileTime, HttpRequestToSign, RequestSigner};
+    use std::str::FromStr;
+
+    use super::{reqwest, FileTime, HttpRequestToSign, RequestSigner, XboxWebSignatureBytes};
     use chrono::prelude::*;
     use hex_literal::hex;
 
-    const PRIVATE_KEY_PEM: &str = "-----BEGIN EC PRIVATE KEY-----\n
+    fn get_request_signer() -> RequestSigner {
+        const PRIVATE_KEY_PEM: &str = "-----BEGIN EC PRIVATE KEY-----\n
     MHcCAQEEIObr5IVtB+DQcn25+R9n4K/EyUUSbVvxIJY7WhVeELUuoAoGCCqGSM49\n
     AwEHoUQDQgAEOKyCQ9qH5U4lZcS0c5/LxIyKvOpKe0l3x4Eg5OgDbzezKNLRgT28\n
     fd4Fq3rU/1OQKmx6jSq0vTB5Ao/48m0iGg==\n
     -----END EC PRIVATE KEY-----\n";
 
-    fn get_request_signer() -> RequestSigner {
         RequestSigner {
             keypair: josekit::jws::ES256
                 .key_pair_from_pem(PRIVATE_KEY_PEM)
@@ -408,5 +411,30 @@ mod test {
 
         assert!(signature.is_some());
         assert!(signer.verify_request(request).is_ok());
+    }
+
+    #[test]
+    fn verify_real_request() {
+        let pem_priv_key = r#"-----BEGIN PRIVATE KEY-----
+        MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgYhW3PQAibijp6X71
+        Uua4a45KoHHpQZaUIef+gPeWOu2hRANCAAQYlLUACGI9jDRlJAkMIXyRxmQoBza1
+        FZcA3pjD6j+ExFAECR1HP8lSIVEICL6BA95LdCQ8/xvI4F8rP10drPl3
+            -----END PRIVATE KEY-----"#;
+
+        let signer = RequestSigner {
+            keypair: josekit::jws::ES256.key_pair_from_pem(pem_priv_key).unwrap(),
+            signing_policy: Default::default(),
+        };
+
+        let request = HttpRequestToSign {
+            method: "POST".to_owned(),
+            path_and_query: "/device/authenticate".to_owned(),
+            authorization: "".to_owned(),
+            body: br#"{"RelyingParty":"http://auth.xboxlive.com","TokenType":"JWT","Properties":{"AuthMethod":"ProofOfPossession","Id":"{e51d4344-196a-4550-9e27-f6c5006a9949}","DeviceType":"Android","Version":"8.0.0","ProofKey":{"kty":"EC","alg":"ES256","crv":"P-256","x":"GJS1AAhiPYw0ZSQJDCF8kcZkKAc2tRWXAN6Yw-o_hMQ","y":"UAQJHUc_yVIhUQgIvoED3kt0JDz_G8jgXys_XR2s-Xc","use":"sig"}}}"#.to_vec(),
+        };
+        let signature = XboxWebSignatureBytes::from_str("AAAAAQHY4xgs5DyIujFG5E5MZ4D1xjd9Up+H4AKLoyBHd95MAUZcabUN//Y/gijed4vvKtlfp4Cd4dJzVhpK0m+sYZcYRqQjBEKAZw==")
+            .expect("Failed to deserialize into XboxWebSignatureBytes");
+
+        assert!(signer.verify(signature, &request).is_ok());
     }
 }
