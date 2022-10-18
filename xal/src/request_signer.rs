@@ -2,14 +2,14 @@ use crate::models::SigningPolicy;
 
 use super::filetime::FileTime;
 use super::models;
-use base64;
+use base64::{self, DecodeError};
 use chrono::prelude::*;
 use josekit::{
     self,
     jwk::{alg::ec::EcKeyPair, Jwk},
 };
 use reqwest;
-use std::option::Option;
+use std::{option::Option, str::FromStr};
 use url::Position;
 
 type Error = Box<dyn std::error::Error>;
@@ -33,6 +33,14 @@ impl From<&XboxWebSignatureBytes> for Vec<u8> {
     }
 }
 
+impl FromStr for XboxWebSignatureBytes {
+    type Err = DecodeError;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        let bytes = base64::decode(s)?;
+        Ok(bytes.into())
+    }
+}
 impl From<Vec<u8>> for XboxWebSignatureBytes {
     fn from(bytes: Vec<u8>) -> Self {
         Self {
@@ -43,13 +51,6 @@ impl From<Vec<u8>> for XboxWebSignatureBytes {
     }
 }
 
-impl From<&str> for XboxWebSignatureBytes {
-    fn from(base64_text: &str) -> Self {
-        let bytes = base64::decode(base64_text).expect("Failed to deserialize base64 signature");
-        bytes.into()
-    }
-}
-
 impl ToString for XboxWebSignatureBytes {
     fn to_string(&self) -> String {
         let bytes: Vec<u8> = self.into();
@@ -57,11 +58,32 @@ impl ToString for XboxWebSignatureBytes {
     }
 }
 
-pub struct HttpRequestToSign<'a> {
-    method: &'a str,
-    path_and_query: &'a str,
-    authorization: &'a str,
-    body: &'a [u8],
+pub struct HttpRequestToSign {
+    method: String,
+    path_and_query: String,
+    authorization: String,
+    body: Vec<u8>,
+}
+
+impl From<reqwest::Request> for HttpRequestToSign {
+    fn from(request: reqwest::Request) -> Self {
+        let url = request.url();
+
+        let auth_header_val = match request.headers().get(reqwest::header::AUTHORIZATION) {
+            Some(val) => val
+                .to_str()
+                .expect("Failed serializing Authentication header to string"),
+            None => "",
+        };
+
+        let body = request.body().unwrap().as_bytes().unwrap().to_vec();
+        HttpRequestToSign {
+            method: request.method().to_string().to_uppercase(),
+            path_and_query: url[Position::BeforePath..].to_owned(),
+            authorization: auth_header_val.to_owned(),
+            body,
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -130,33 +152,23 @@ impl RequestSigner {
         request: reqwest::Request,
         timestamp: Option<DateTime<Utc>>,
     ) -> Result<reqwest::Request> {
-        let url = request.url();
+        let mut clone_request = request.try_clone().unwrap();
+        // Gather data from request used for signing
+        let to_sign = request.into();
 
-        let auth_header_val = match request.headers().get(reqwest::header::AUTHORIZATION) {
-            Some(val) => val.to_str(),
-            None => Ok(""),
-        }?;
-
-        let body = request.body().unwrap().as_bytes().unwrap();
-        let to_sign = HttpRequestToSign {
-            method: &request.method().to_string().to_uppercase(),
-            path_and_query: &url[Position::BeforePath..],
-            authorization: auth_header_val,
-            body,
-        };
-
+        // Create signature
         let signature = self
             .sign(
                 self.signing_policy.version,
                 timestamp.unwrap_or_else(Utc::now),
-                to_sign,
+                &to_sign,
             )
             .expect("Signing request failed!");
 
-        let mut clone_request = request.try_clone().unwrap();
+        // Replace request body with byte representation (so signature creation is deterministic)
+        clone_request.body_mut().replace(to_sign.body.into());
 
-        clone_request.body_mut().replace(body.to_vec().into());
-
+        // Assign Signature-header in request
         clone_request
             .headers_mut()
             .insert("Signature", signature.to_string().parse()?);
@@ -164,33 +176,12 @@ impl RequestSigner {
         Ok(clone_request)
     }
 
-    pub fn verify(
-        &self,
-        pub_key: &[u8],
-        signature: XboxWebSignatureBytes,
-        request: HttpRequestToSign,
-    ) -> Result<()> {
-        let verifier = josekit::jws::ES256.verifier_from_der(pub_key)?;
-        let message = self.assemble_message_data(
-            &signature.signing_policy_version,
-            &signature.timestamp,
-            request.method.to_owned(),
-            request.path_and_query.to_owned(),
-            request.authorization.to_owned(),
-            request.body,
-            self.signing_policy.max_body_bytes,
-        )?;
-        verifier
-            .verify(&message, &signature.signed_digest)
-            .map_err(|err| err.into())
-    }
-
     /// Sign
     pub fn sign(
         &self,
         signing_policy_version: i32,
         timestamp: DateTime<Utc>,
-        request: HttpRequestToSign,
+        request: &HttpRequestToSign,
     ) -> Result<XboxWebSignatureBytes> {
         self.sign_raw(
             signing_policy_version,
@@ -198,7 +189,7 @@ impl RequestSigner {
             request.method.to_owned(),
             request.path_and_query.to_owned(),
             request.authorization.to_owned(),
-            request.body,
+            &request.body,
         )
     }
 
@@ -216,6 +207,7 @@ impl RequestSigner {
         let filetime_bytes = timestamp.to_filetime().to_be_bytes();
         let signing_policy_version_bytes = signing_policy_version.to_be_bytes();
 
+        // Assemble the message to sign
         let message = self
             .assemble_message_data(
                 &signing_policy_version_bytes,
@@ -237,6 +229,42 @@ impl RequestSigner {
             timestamp: filetime_bytes.to_vec(),
             signed_digest,
         })
+    }
+
+    pub fn verify_request(&self, request: reqwest::Request) -> Result<()> {
+        let signature = request
+            .try_clone()
+            .ok_or("Failed to clone request")?
+            .headers()
+            .get("Signature")
+            .ok_or("Failed to get signature header")?
+            .to_str()?
+            .to_owned();
+
+        self.verify(
+            XboxWebSignatureBytes::from_str(&signature)?,
+            &request.into(),
+        )
+    }
+
+    pub fn verify(
+        &self,
+        signature: XboxWebSignatureBytes,
+        request: &HttpRequestToSign,
+    ) -> Result<()> {
+        let verifier = josekit::jws::ES256.verifier_from_jwk(&self.keypair.to_jwk_public_key())?;
+        let message = self.assemble_message_data(
+            &signature.signing_policy_version,
+            &signature.timestamp,
+            request.method.to_owned(),
+            request.path_and_query.to_owned(),
+            request.authorization.to_owned(),
+            &request.body,
+            self.signing_policy.max_body_bytes,
+        )?;
+        verifier
+            .verify(&message, &signature.signed_digest)
+            .map_err(|err| err.into())
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -309,10 +337,10 @@ mod test {
         let dt = Utc.timestamp(1586999965, 0);
 
         let request = HttpRequestToSign {
-            method: "POST",
-            path_and_query: "/path?query=1",
-            authorization: "XBL3.0 x=userid;jsonwebtoken",
-            body: b"thebodygoeshere",
+            method: "POST".to_owned(),
+            path_and_query: "/path?query=1".to_owned(),
+            authorization: "XBL3.0 x=userid;jsonwebtoken".to_owned(),
+            body: b"thebodygoeshere".to_vec(),
         };
 
         let signature = signer
@@ -322,12 +350,12 @@ mod test {
                 request.method.to_owned(),
                 request.path_and_query.to_owned(),
                 request.authorization.to_owned(),
-                request.body,
+                &request.body,
             )
             .expect("Signing failed!");
 
         signer
-            .verify(&signer.keypair.to_der_public_key(), signature, request)
+            .verify(signature, &request)
             .expect("Verification failed")
     }
 
@@ -356,7 +384,6 @@ mod test {
     }
 
     #[test]
-    #[ignore = "Enable again when RFC6979 (deterministic signing) is implemented"]
     fn sign_reqwest() {
         let signer = get_request_signer();
         let timestamp = Utc.timestamp(1586999965, 0);
@@ -380,9 +407,6 @@ mod test {
         let signature = request.headers().get("Signature");
 
         assert!(signature.is_some());
-        assert_eq!(
-            signature.unwrap(),
-            "AAAAAQHWE40Q98yAFe3R7GuZfvGA350cH7hWgg4HIHjaD9lGYiwxki6bNyGnB8dMEIfEmBiuNuGUfWjY5lL2h44X/VMGOkPIezVb7Q=="
-        );
+        assert!(signer.verify_request(request).is_ok());
     }
 }
