@@ -164,6 +164,27 @@ impl RequestSigner {
         Ok(clone_request)
     }
 
+    pub fn verify(
+        &self,
+        pub_key: &[u8],
+        signature: XboxWebSignatureBytes,
+        request: HttpRequestToSign,
+    ) -> Result<()> {
+        let verifier = josekit::jws::ES256.verifier_from_der(pub_key)?;
+        let message = self.assemble_message_data(
+            &signature.signing_policy_version,
+            &signature.timestamp,
+            request.method.to_owned(),
+            request.path_and_query.to_owned(),
+            request.authorization.to_owned(),
+            request.body,
+            self.signing_policy.max_body_bytes,
+        )?;
+        verifier
+            .verify(&message, &signature.signed_digest)
+            .map_err(|err| err.into())
+    }
+
     /// Sign
     pub fn sign(
         &self,
@@ -263,7 +284,7 @@ impl RequestSigner {
 
 #[cfg(test)]
 mod test {
-    use super::{reqwest, FileTime, RequestSigner};
+    use super::{reqwest, FileTime, HttpRequestToSign, RequestSigner};
     use chrono::prelude::*;
     use hex_literal::hex;
 
@@ -283,24 +304,31 @@ mod test {
     }
 
     #[test]
-    #[ignore = "Enable again when RFC6979 (deterministic signing) is implemented"]
     fn sign() {
         let signer = get_request_signer();
-
         let dt = Utc.timestamp(1586999965, 0);
+
+        let request = HttpRequestToSign {
+            method: "POST",
+            path_and_query: "/path?query=1",
+            authorization: "XBL3.0 x=userid;jsonwebtoken",
+            body: b"thebodygoeshere",
+        };
 
         let signature = signer
             .sign_raw(
                 1,
                 dt,
-                "POST".to_owned(),
-                "/path?query=1".to_owned(),
-                "XBL3.0 x=userid;jsonwebtoken".to_owned(),
-                "thebodygoeshere".as_bytes(),
+                request.method.to_owned(),
+                request.path_and_query.to_owned(),
+                request.authorization.to_owned(),
+                request.body,
             )
             .expect("Signing failed!");
 
-        assert_eq!(signature.to_string(), "AAAAAQHWE40Q98yAFe3R7GuZfvGA350cH7hWgg4HIHjaD9lGYiwxki6bNyGnB8dMEIfEmBiuNuGUfWjY5lL2h44X/VMGOkPIezVb7Q==");
+        signer
+            .verify(&signer.keypair.to_der_public_key(), signature, request)
+            .expect("Verification failed")
     }
 
     #[test]
