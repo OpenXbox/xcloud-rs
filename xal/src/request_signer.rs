@@ -8,7 +8,7 @@ use josekit::{
     self,
     jwk::{alg::ec::EcKeyPair, Jwk},
 };
-use reqwest;
+use reqwest::{self, Method};
 use std::{option::Option, str::FromStr};
 use url::Position;
 
@@ -77,7 +77,19 @@ impl From<reqwest::Request> for HttpRequestToSign {
             None => "",
         };
 
-        let body = request.body().unwrap().as_bytes().unwrap().to_vec();
+        let body = match *request.method() {
+            Method::GET => {
+                vec![]
+            }
+            Method::POST => request
+                .body()
+                .expect("Failed to get body from HTTP request")
+                .as_bytes()
+                .expect("Failed to convert HTTP body to bytes")
+                .to_vec(),
+            _ => panic!("Unhandled HTTP method: {:?}", request.method()),
+        };
+
         HttpRequestToSign {
             method: request.method().to_string().to_uppercase(),
             path_and_query: url[Position::BeforePath..].to_owned(),
@@ -315,9 +327,13 @@ impl RequestSigner {
 mod test {
     use std::str::FromStr;
 
-    use super::{reqwest, FileTime, HttpRequestToSign, RequestSigner, XboxWebSignatureBytes};
+    use super::{
+        reqwest, FileTime, HttpRequestToSign, RequestSigner, SigningReqwestBuilder,
+        XboxWebSignatureBytes,
+    };
     use chrono::prelude::*;
     use hex_literal::hex;
+    use reqwest::{Body, Client};
 
     fn get_request_signer() -> RequestSigner {
         const PRIVATE_KEY_PEM: &str = "-----BEGIN EC PRIVATE KEY-----\n
@@ -436,5 +452,30 @@ mod test {
             .expect("Failed to deserialize into XboxWebSignatureBytes");
 
         assert!(signer.verify(signature, &request).is_ok());
+    }
+
+    #[test]
+    fn build_signed_get_request() {
+        let signer = get_request_signer();
+        let request = Client::new()
+            .get("https://example.com")
+            .sign(&signer, None)
+            .expect("Failed to sign HTTP GET request")
+            .build();
+
+        assert!(request.is_ok());
+    }
+
+    #[test]
+    fn build_signed_post_request() {
+        let signer = get_request_signer();
+        let request = Client::new()
+            .post("https://example.com")
+            .body(Body::from(b"somedata".to_vec()))
+            .sign(&signer, None)
+            .expect("Failed to sign HTTP POST request")
+            .build();
+
+        assert!(request.is_ok());
     }
 }
