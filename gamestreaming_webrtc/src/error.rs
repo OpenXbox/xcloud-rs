@@ -23,6 +23,10 @@ where
 pub enum GsError {
     #[error(transparent)]
     ApiError(#[from] GssvApiError),
+    #[error("Connection provisioning failed")]
+    Provisioning(String),
+    #[error("Connection exchange failed")]
+    ConnectionExchange(String),
     #[error("Unknown error")]
     Unknown,
 }

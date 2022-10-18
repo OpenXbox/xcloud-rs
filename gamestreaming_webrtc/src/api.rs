@@ -152,7 +152,11 @@ impl GssvApi {
         self.get_json(self.url("/v1/titles"), None).await
     }
 
-    pub async fn start_session(&self, server_id: &str) -> Result<SessionResponse, GssvApiError> {
+    pub async fn start_session(
+        &self,
+        server_id: Option<&str>,
+        title_id: Option<&str>,
+    ) -> Result<SessionResponse, GssvApiError> {
         let device_info = DeviceInfo {
             app_info: AppInfo {
                 env: AppEnvironment {
@@ -198,9 +202,9 @@ impl GssvApi {
         );
 
         let request_body = GssvSessionConfig {
-            title_id: "".into(),
+            title_id: title_id.unwrap_or("").into(),
             system_update_group: "".into(),
-            server_id: server_id.into(),
+            server_id: server_id.unwrap_or("").into(),
             fallback_region_names: vec![],
             settings: GssvSessionSettings {
                 nano_version: "V3;WebrtcTransport.dll".into(),
@@ -225,13 +229,13 @@ impl GssvApi {
     pub async fn session_connect(
         &self,
         session: &SessionResponse,
-        user_token: &str,
+        xcloud_transfer_token: &str,
     ) -> Result<(), GssvApiError> {
         let resp = self
             .client
             .post(self.session_url(session, "/connect"))
             .json(&XCloudConnect {
-                user_token: user_token.into(),
+                user_token: xcloud_transfer_token.into(),
             })
             .send()
             .await
