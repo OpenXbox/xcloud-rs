@@ -1,3 +1,5 @@
+use crate::models::SigningPolicy;
+
 use super::filetime::FileTime;
 use super::models;
 use base64;
@@ -20,31 +22,38 @@ pub struct XboxWebSignatureBytes {
     signed_digest: Vec<u8>,
 }
 
-impl XboxWebSignatureBytes {
-    pub fn as_bytestream(&self) -> Vec<u8> {
+impl From<&XboxWebSignatureBytes> for Vec<u8> {
+    fn from(obj: &XboxWebSignatureBytes) -> Self {
         let mut bytes: Vec<u8> = Vec::new();
-        bytes.extend_from_slice(self.signing_policy_version.as_slice());
-        bytes.extend_from_slice(self.timestamp.as_slice());
-        bytes.extend_from_slice(self.signed_digest.as_slice());
+        bytes.extend_from_slice(obj.signing_policy_version.as_slice());
+        bytes.extend_from_slice(obj.timestamp.as_slice());
+        bytes.extend_from_slice(obj.signed_digest.as_slice());
 
         bytes
     }
+}
 
-    pub fn as_base64(&self) -> String {
-        base64::encode(self.as_bytestream())
-    }
-
-    pub fn from_bytes(bytes: Vec<u8>) -> Self {
+impl From<Vec<u8>> for XboxWebSignatureBytes {
+    fn from(bytes: Vec<u8>) -> Self {
         Self {
             signing_policy_version: bytes[..4].to_vec(),
             timestamp: bytes[4..12].to_vec(),
             signed_digest: bytes[12..].to_vec(),
         }
     }
+}
 
-    pub fn from_base64(text: String) -> Self {
-        let bytes = base64::decode(text).expect("Failed to deserialize base64 signature");
-        XboxWebSignatureBytes::from_bytes(bytes)
+impl From<&str> for XboxWebSignatureBytes {
+    fn from(base64_text: &str) -> Self {
+        let bytes = base64::decode(base64_text).expect("Failed to deserialize base64 signature");
+        bytes.into()
+    }
+}
+
+impl ToString for XboxWebSignatureBytes {
+    fn to_string(&self) -> String {
+        let bytes: Vec<u8> = self.into();
+        base64::encode(bytes)
     }
 }
 
@@ -63,7 +72,7 @@ pub struct RequestSigner {
 
 impl Default for RequestSigner {
     fn default() -> Self {
-        Self::new()
+        Self::new(SigningPolicy::default())
     }
 }
 
@@ -102,10 +111,10 @@ impl SigningReqwestBuilder for reqwest::RequestBuilder {
 }
 
 impl RequestSigner {
-    pub fn new() -> Self {
+    pub fn new(policy: models::SigningPolicy) -> Self {
         Self {
             keypair: josekit::jws::ES256.generate_key_pair().unwrap(),
-            signing_policy: models::SigningPolicy::default(),
+            signing_policy: policy,
         }
     }
 
@@ -150,7 +159,7 @@ impl RequestSigner {
 
         clone_request
             .headers_mut()
-            .insert("Signature", signature.as_base64().parse()?);
+            .insert("Signature", signature.to_string().parse()?);
 
         Ok(clone_request)
     }
@@ -291,7 +300,7 @@ mod test {
             )
             .expect("Signing failed!");
 
-        assert_eq!(signature.as_base64(), "AAAAAQHWE40Q98yAFe3R7GuZfvGA350cH7hWgg4HIHjaD9lGYiwxki6bNyGnB8dMEIfEmBiuNuGUfWjY5lL2h44X/VMGOkPIezVb7Q==");
+        assert_eq!(signature.to_string(), "AAAAAQHWE40Q98yAFe3R7GuZfvGA350cH7hWgg4HIHjaD9lGYiwxki6bNyGnB8dMEIfEmBiuNuGUfWjY5lL2h44X/VMGOkPIezVb7Q==");
     }
 
     #[test]
