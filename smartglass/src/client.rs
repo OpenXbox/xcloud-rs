@@ -1,11 +1,13 @@
 use super::models;
 use reqwest;
+use serde::de::DeserializeOwned;
 use std::collections::HashMap;
 use std::default::Default;
 use uuid;
 use xal::cvlib::CorrelationVector;
 use xal::models as xal_models;
 use xal::request_signer;
+use xal::request_signer::SigningReqwestBuilder;
 
 type Error = Box<dyn std::error::Error>;
 type Result<T> = std::result::Result<T, Error>;
@@ -53,19 +55,6 @@ impl SmartglassClient {
         self.ms_cv.to_string()
     }
 
-    pub async fn send_signed(
-        &mut self,
-        request: &mut reqwest::Request,
-    ) -> Result<reqwest::Response> {
-        let mut request = request.try_clone().unwrap();
-
-        request
-            .headers_mut()
-            .insert("MS-CV", self.next_cv().parse()?);
-        request = self.request_signer.sign_request(request, None)?;
-        Ok(self.client.execute(request).await?)
-    }
-
     pub async fn fetch_operation_status(
         &mut self,
         operation_id: String,
@@ -78,10 +67,16 @@ impl SmartglassClient {
         headers.insert("x-xbl-opId", operation_id.parse()?);
         headers.insert("x-xbl-deviceId", device_id.parse()?);
 
-        let mut request = self.client.get(url).headers(headers).build()?;
-        let resp = self.send_signed(&mut request).await?;
-
-        Ok(serde_json::from_str(&resp.text().await?)?)
+        self.client
+            .get(url)
+            .headers(headers)
+            .header("MS-CV", self.next_cv())
+            .sign(&self.request_signer, None)?
+            .send()
+            .await?
+            .json::<models::OperationStatusResponse>()
+            .await
+            .map_err(|err| err.into())
     }
 
     pub async fn get_console_status(
@@ -93,17 +88,25 @@ impl SmartglassClient {
             live_id = console_live_id
         );
 
-        let mut request = self.client.get(&url).build()?;
-        let resp = self.send_signed(&mut request).await?;
-
-        Ok(serde_json::from_str(&resp.text().await?)?)
+        self.client
+            .get(&url)
+            .header("MS-CV", self.next_cv())
+            .sign(&self.request_signer, None)?
+            .send()
+            .await?
+            .json::<models::SmartglassConsoleStatus>()
+            .await
+            .map_err(|err| err.into())
     }
 
-    async fn fetch_list(
+    async fn fetch_list<T>(
         &mut self,
         list_name: String,
         query_params: Option<HashMap<String, String>>,
-    ) -> Result<reqwest::Response> {
+    ) -> Result<T>
+    where
+        T: DeserializeOwned,
+    {
         let url = format!(
             "https://xccs.xboxlive.com/lists/{list_name}",
             list_name = list_name
@@ -113,10 +116,14 @@ impl SmartglassClient {
         if query_params.is_some() {
             req_builder = req_builder.query(&query_params.unwrap())
         }
-        let mut request = req_builder.build()?;
-        let resp = self.send_signed(&mut request).await?;
-
-        Ok(resp)
+        req_builder
+            .header("MS-CV", self.next_cv())
+            .sign(&self.request_signer, None)?
+            .send()
+            .await?
+            .json::<T>()
+            .await
+            .map_err(|err| err.into())
     }
 
     async fn send_oneshot_command(
@@ -138,10 +145,16 @@ impl SmartglassClient {
             linked_xbox_id: console_live_id,
         };
 
-        let mut request = self.client.post(url).json(&json_body).build()?;
-        let resp = self.send_signed(&mut request).await?;
-
-        Ok(serde_json::from_str(&resp.text().await?)?)
+        self.client
+            .post(url)
+            .header("MS-CV", self.next_cv())
+            .json(&json_body)
+            .sign(&self.request_signer, None)?
+            .send()
+            .await?
+            .json::<models::CommandResponse>()
+            .await
+            .map_err(|err| err.into())
     }
 
     pub async fn get_console_list(&mut self) -> Result<models::SmartglassConsoleList> {
@@ -149,11 +162,8 @@ impl SmartglassClient {
         query_params.insert("queryCurrentDevice".to_owned(), "false".to_owned());
         query_params.insert("includeStorageDevices".to_owned(), "true".to_owned());
 
-        let resp = self
-            .fetch_list("devices".to_owned(), Some(query_params))
-            .await?;
-
-        Ok(serde_json::from_str(&resp.text().await?)?)
+        self.fetch_list("devices".to_owned(), Some(query_params))
+            .await
     }
 
     pub async fn get_storage_devices(
@@ -163,11 +173,8 @@ impl SmartglassClient {
         let mut query_params: HashMap<String, String> = HashMap::new();
         query_params.insert("deviceId".to_owned(), device_id);
 
-        let resp = self
-            .fetch_list("storageDevices".to_owned(), Some(query_params))
-            .await?;
-
-        Ok(serde_json::from_str(&resp.text().await?)?)
+        self.fetch_list("storageDevices".to_owned(), Some(query_params))
+            .await
     }
 
     pub async fn get_installed_apps(
@@ -177,11 +184,8 @@ impl SmartglassClient {
         let mut query_params: HashMap<String, String> = HashMap::new();
         query_params.insert("deviceId".to_owned(), device_id);
 
-        let resp = self
-            .fetch_list("installedApps".to_owned(), Some(query_params))
-            .await?;
-
-        Ok(serde_json::from_str(&resp.text().await?)?)
+        self.fetch_list("installedApps".to_owned(), Some(query_params))
+            .await
     }
 
     pub async fn command_power_wake_up(
