@@ -67,6 +67,40 @@ impl Default for RequestSigner {
     }
 }
 
+pub trait SigningReqwestBuilder {
+    fn sign(
+        self,
+        signer: &RequestSigner,
+        timestamp: Option<DateTime<Utc>>,
+    ) -> Result<reqwest::RequestBuilder>;
+}
+
+impl SigningReqwestBuilder for reqwest::RequestBuilder {
+    fn sign(
+        self,
+        signer: &RequestSigner,
+        timestamp: Option<DateTime<Utc>>,
+    ) -> Result<reqwest::RequestBuilder> {
+        match self.try_clone() {
+            Some(rb) => {
+                let request = rb.build()?;
+                // Fallback to Utc::now() internally
+                let signed = signer.sign_request(request, timestamp)?;
+                let body_bytes = signed
+                    .body()
+                    .ok_or("Failed getting request body")?
+                    .as_bytes()
+                    .ok_or("Failed getting bytes from request body")?
+                    .to_vec();
+                let headers = signed.headers().to_owned();
+
+                Ok(self.headers(headers).body(body_bytes))
+            }
+            None => Err("Failed to clone RequestBuilder for signing".into()),
+        }
+    }
+}
+
 impl RequestSigner {
     pub fn new() -> Self {
         Self {

@@ -2,9 +2,13 @@ use std::time::Duration;
 
 use crate::models::response::WindowsLiveTokenResponse;
 
-use super::{app_params, models, models::request, models::response, request_signer};
+use super::{
+    app_params, models,
+    models::request,
+    models::response,
+    request_signer::{self, SigningReqwestBuilder},
+};
 use base64;
-use chrono::Utc;
 use cvlib;
 use oauth2::{
     basic::{
@@ -252,19 +256,12 @@ impl XalAuthenticator {
             },
         };
 
-        let mut request = self
-            .client
+        self.client
             .post("https://device.auth.xboxlive.com/device/authenticate")
             .headers(headers)
             .json(&json_body)
-            .build()?;
-
-        request = self
-            .request_signer
-            .sign_request(request, Some(Utc::now()))?;
-
-        self.client
-            .execute(request)
+            .sign(&self.request_signer, None)?
+            .send()
             .await?
             .json::<response::XADResponse>()
             .await
@@ -301,15 +298,14 @@ impl XalAuthenticator {
             },
         };
 
-        let mut request = self
+        let resp = self
             .client
             .post("https://sisu.xboxlive.com/authenticate")
             .headers(headers)
             .json(&json_body)
-            .build()?;
-
-        request = self.request_signer.sign_request(request, None)?;
-        let resp = self.client.execute(request).await?;
+            .sign(&self.request_signer, None)?
+            .send()
+            .await?;
 
         let session_id = resp
             .headers()
@@ -339,16 +335,12 @@ impl XalAuthenticator {
             proof_key: self.request_signer.get_proof_key(),
         };
 
-        let mut request = self
-            .client
+        self.client
             .post("https://sisu.xboxlive.com/authorize")
             .header("MS-CV", self.next_cv())
             .json(&json_body)
-            .build()?;
-
-        request = self.request_signer.sign_request(request, None)?;
-        self.client
-            .execute(request)
+            .sign(&self.request_signer, None)?
+            .send()
             .await?
             .json::<response::SisuAuthorizationResponse>()
             .await
@@ -377,16 +369,12 @@ impl XalAuthenticator {
             },
         };
 
-        let mut request = self
-            .client
+        self.client
             .post("https://xsts.auth.xboxlive.com/xsts/authorize")
             .headers(headers)
             .json(&json_body)
-            .build()?;
-
-        request = self.request_signer.sign_request(request, None)?;
-        self.client
-            .execute(request)
+            .sign(&self.request_signer, None)?
+            .send()
             .await?
             .json::<response::XSTSResponse>()
             .await
