@@ -10,9 +10,7 @@ use chrono::{Duration, Utc};
 use api::{
     ConsolesResponse, IceExchangeResponse, SdpExchangeResponse, SessionResponse, TitleResult,
 };
-use sdp::SdpSessionDescription;
 use webrtc::ice_transport::ice_candidate::RTCIceCandidateInit;
-use webrtc::sdp::SessionDescription;
 
 use crate::api::GssvApi;
 use crate::error::GsError;
@@ -186,10 +184,10 @@ impl GamestreamingClient {
     pub async fn exchange_sdp(
         &self,
         session: &SessionResponse,
-        sdp: SessionDescription,
+        sdp: &str,
     ) -> Result<SdpExchangeResponse, GsError> {
         self.api
-            .set_sdp(session, &SdpSessionDescription(sdp).to_string())
+            .set_sdp(session, sdp)
             .await
             .map_err(GsError::ApiError)?;
         self.api.get_sdp(session).await.map_err(GsError::ApiError)

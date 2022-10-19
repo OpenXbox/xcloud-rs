@@ -715,6 +715,45 @@ mod tests {
         r#"{"exchangeResponse":"[{\"candidate\":\"a=candidate:1 1 UDP 100 43.111.100.34 1136 typ host \",\"messageType\":\"iceCandidate\",\"sdpMLineIndex\":\"0\",\"sdpMid\":\"0\"},{\"candidate\":\"a=candidate:2 1 UDP 1 2603:1076:201:83::AB8:E9FE 9002 typ host \",\"messageType\":\"iceCandidate\",\"sdpMLineIndex\":\"0\",\"sdpMid\":\"0\"},{\"candidate\":\"a=end-of-candidates\",\"messageType\":\"iceCandidate\",\"sdpMLineIndex\":\"0\",\"sdpMid\":\"0\"}]","errorDetails":null}"#
     }
 
+    fn sdp_exchange_response_success() -> &'static str {
+        r#"{
+            "chat":1,
+            "chatConfiguration":
+            {
+                "format":
+                {
+                    "codec":"opus",
+                    "container":"webm"
+                }
+            },
+            "control":3,
+            "input":7,
+            "message":1,
+            "messageType":"answer",
+            "sdp": "v=0\\r\\no=- 4252848089029056388 2 IN IP4 127.0.0.1\\r\\ns=-\\r\\nt=0 0\\r\\na=group:BUNDLE 0 1 2\\r\\na=extmap-allow-mixed\\r\\na=msid-semantic: WMS 0 1\\r\\nm=audio 9 UDP/TLS/RTP/SAVPF 111 110\\r\\nc=IN IP4 0.0.0.0\\r\\na=rtcp:9 IN IP4 0.0.0.0\\r\\na=ice-ufrag:meS5\\r\\na=ice-pwd:YFL0EeEu/SnRFH7uimhnqlMQ\\r\\na=ice-options:trickle renomination\\r\\na=fingerprint:sha-256 AC:FD:F9:60:17:50:40:0D:77:8A:B2:BE:05:8A:71:66:70:A9:A7:10:2C:32:AC:CC:14:28:74:36:F1:64:40:29\\r\\na=setup:active\\r\\na=mid:0\\r\\na=extmap:1 urn:ietf:params:rtp-hdrext:ssrc-audio-level\\r\\na=extmap:2 http://www.webrtc.org/experiments/rtp-hdrext/abs-send-time\\r\\na=extmap:3 http://www.ietf.org/id/draft-holmer-rmcat-transport-wide-cc-extensions-01\\r\\na=extmap:4 urn:ietf:params:rtp-hdrext:sdes:mid\\r\\na=sendrecv\\r\\na=msid:0 58ba9aa2-2380-420f-a101-a16a0d6ef3f6\\r\\na=rtcp-mux\\r\\na=rtpmap:111 opus/48000/2\\r\\na=fmtp:111 minptime=10;useinbandfec=1\\r\\na=rtpmap:110 telephone-event/48000\\r\\na=ssrc:782802659 cname:OrFMezyfZ5PFVHNk\\r\\nm=video 9 UDP/TLS/RTP/SAVPF 127 121 125 107 108 109 124 120 123 119 114 115 116\\r\\nc=IN IP4 0.0.0.0\\r\\na=rtcp:9 IN IP4 0.0.0.0\\r\\na=ice-ufrag:meS5\\r\\na=ice-pwd:YFL0EeEu/SnRFH7uimhnqlMQ\\r\\na=ice-options:trickle renomination\\r\\na=fingerprint:sha-256 AC:FD:F9:60:17:50:40:0D:77:8A:B2:BE:05:8A:71:66:70:A9:A7:10:2C:32:AC:CC:14:28:74:36:F1:64:40:29\\r\\na=setup:active\\r\\na=mid:1\\r\\na=extmap:14 urn:ietf:params:rtp-hdrext:toffset\\r\\na=extmap:2 http://www.webrtc.org/experiments/rtp-hdrext/abs-send-time\\r\\na=extmap:13 urn:3gpp:video-orientation\\r\\na=extmap:3 http://www.ietf.org/id/draft-holmer-rmcat-transport-wide-cc-extensions-01\\r\\na=extmap:5 http://www.webrtc.org/experiments/rtp-hdrext/playout-delay\\r\\na=extmap:6 http://www.webrtc.org/experiments/rtp-hdrext/video-content-type\\r\\na=extmap:7 http://www.webrtc.org/experiments/rtp-hdrext/video-timing\\r\\na=extmap:8 http://www.webrtc.org/experiments/rtp-hdrext/color-space\\r\\na=extmap:4 urn:ietf:params:rtp-hdrext:sdes:mid\\r\\na=extmap:10 urn:ietf:params:rtp-hdrext:sdes:rtp-stream-id\\r\\na=extmap:11 urn:ietf:params:rtp-hdrext:sdes:repaired-rtp-stream-id\\r\\na=sendonly\\r\\na=msid:1 60de9977-018c-42e4-b62f-4fbe9831eb19\\r\\na=rtcp-mux\\r\\na=rtcp-rsize\\r\\na=rtpmap:127 H264/90000\\r\\na=rtcp-fb:127 goog-remb\\r\\na=rtcp-fb:127 transport-cc\\r\\na=rtcp-fb:127 ccm fir\\r\\na=rtcp-fb:127 nack\\r\\na=rtcp-fb:127 nack pli\\r\\na=fmtp:127 level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=42002a\\r\\na=rtpmap:121 rtx/90000\\r\\na=fmtp:121 apt=127\\r\\na=rtpmap:125 H264/90000\\r\\na=rtcp-fb:125 goog-remb\\r\\na=rtcp-fb:125 transport-cc\\r\\na=rtcp-fb:125 ccm fir\\r\\na=rtcp-fb:125 nack\\r\\na=rtcp-fb:125 nack pli\\r\\na=fmtp:125 level-asymmetry-allowed=1;packetization-mode=0;profile-level-id=42002a\\r\\na=rtpmap:107 rtx/90000\\r\\na=fmtp:107 apt=125\\r\\na=rtpmap:108 H264/90000\\r\\na=rtcp-fb:108 goog-remb\\r\\na=rtcp-fb:108 transport-cc\\r\\na=rtcp-fb:108 ccm fir\\r\\na=rtcp-fb:108 nack\\r\\na=rtcp-fb:108 nack pli\\r\\na=fmtp:108 level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=42e02a\\r\\na=rtpmap:109 rtx/90000\\r\\na=fmtp:109 apt=108\\r\\na=rtpmap:124 H264/90000\\r\\na=rtcp-fb:124 goog-remb\\r\\na=rtcp-fb:124 transport-cc\\r\\na=rtcp-fb:124 ccm fir\\r\\na=rtcp-fb:124 nack\\r\\na=rtcp-fb:124 nack pli\\r\\na=fmtp:124 level-asymmetry-allowed=1;packetization-mode=0;profile-level-id=42e02a\\r\\na=rtpmap:120 rtx/90000\\r\\na=fmtp:120 apt=124\\r\\na=rtpmap:123 H264/90000\\r\\na=rtcp-fb:123 goog-remb\\r\\na=rtcp-fb:123 transport-cc\\r\\na=rtcp-fb:123 ccm fir\\r\\na=rtcp-fb:123 nack\\r\\na=rtcp-fb:123 nack pli\\r\\na=fmtp:123 level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=4d002a\\r\\na=rtpmap:119 rtx/90000\\r\\na=fmtp:119 apt=123\\r\\na=rtpmap:114 red/90000\\r\\na=rtpmap:115 rtx/90000\\r\\na=fmtp:115 apt=114\\r\\na=rtpmap:116 ulpfec/90000\\r\\na=ssrc-group:FID 2398464550 773152397\\r\\na=ssrc:2398464550 cname:OrFMezyfZ5PFVHNk\\r\\na=ssrc:773152397 cname:OrFMezyfZ5PFVHNk\\r\\nm=application 9 UDP/DTLS/SCTP webrtc-datachannel\\r\\nc=IN IP4 0.0.0.0\\r\\nb=AS:30\\r\\na=ice-ufrag:meS5\\r\\na=ice-pwd:YFL0EeEu/SnRFH7uimhnqlMQ\\r\\na=ice-options:trickle renomination\\r\\na=fingerprint:sha-256 AC:FD:F9:60:17:50:40:0D:77:8A:B2:BE:05:8A:71:66:70:A9:A7:10:2C:32:AC:CC:14:28:74:36:F1:64:40:29\\r\\na=setup:active\\r\\na=mid:2\\r\\na=sctp-port:5000\\r\\na=max-message-size:262144\\r\\n",
+            "sdpType":"answer",
+            "status":"success"
+        }"#
+    }
+
+    fn sdp_exchange_response_failure() -> &'static str {
+        r#"{
+            "chat":1,
+            "chatConfiguration":
+            {
+                "format":
+                {
+                    "codec":"opus",
+                    "container":"webm"
+                }
+            },
+            "control":3,
+            "debugInfo": "{\\\"messageType\\\":\\\"offer\\\",\\\"sdp\\\":\\\"v=0\\\\r\\\\no=- 753583340024618303 380645635 IN IP4 0.0.0.0\\\\r\\\\ns=-\\\\r\\\\nt=0 0\\\\r\\\\na=fingerprint:sha-256 BE:35:D5:62:D5:DB:3F:8B:CE:C5:16:C4:BC:BF:B3:ED:59:EE:89:CC:13:CA:AE:F2:E1:F7:B7:52:D4:17:4C:33\\\\r\\\\na=group:BUNDLE 0\\\\r\\\\nm=application 9 UDP/DTLS/SCTP webrtc-datachannel\\\\r\\\\nc=IN IP4 0.0.0.0\\\\r\\\\na=setup:actpass\\\\r\\\\na=mid:0\\\\r\\\\na=sendrecv\\\\r\\\\na=sctp-port:5000\\\\r\\\\na=ice-ufrag:RakabfWkKsOjVvDK\\\\r\\\\na=ice-pwd:ytCcslQKCskYigZWgNRycJRJAdwJJKsQ\\\\r\\\\n\\\",\\\"configuration\\\":{\\\"chatConfiguration\\\":{\\\"bytesPerSample\\\":2,\\\"expectedClipDurationMs\\\":100,\\\"format\\\":{\\\"codec\\\":\\\"opus\\\",\\\"container\\\":\\\"webm\\\"},\\\"numChannels\\\":1,\\\"sampleFrequencyHz\\\":24000},\\\"chat\\\":{\\\"minVersion\\\":1,\\\"maxVersion\\\":1},\\\"control\\\":{\\\"minVersion\\\":1,\\\"maxVersion\\\":3},\\\"input\\\":{\\\"minVersion\\\":1,\\\"maxVersion\\\":7},\\\"message\\\":{\\\"minVersion\\\":1,\\\"maxVersion\\\":1}}}",
+            "input":7,
+            "message":1
+        }"#
+    }
+
     #[test]
     fn deserialize_sdp_offer() {
         let data = sdp_offer_message();
@@ -795,5 +834,17 @@ mod tests {
         assert!(result.is_ok());
         let serialized = serde_json::to_string(&result.unwrap());
         assert!(serialized.is_ok());
+    }
+
+    #[test]
+    fn deserialize_sdp_response_success() {
+        let result = serde_json::from_str::<SdpResponse>(&sdp_exchange_response_success());
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn deserialize_sdp_response_failure() {
+        let result = serde_json::from_str::<SdpResponse>(&sdp_exchange_response_failure());
+        assert!(result.is_ok());
     }
 }
