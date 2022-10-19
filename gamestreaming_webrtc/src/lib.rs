@@ -123,7 +123,8 @@ impl GamestreamingClient {
         while Utc::now() - start_time
             < Duration::seconds(GamestreamingClient::CONNECTION_TIMEOUT_SECS)
         {
-            match self.api.get_session_state(&session).await?.state.as_ref() {
+            let state_response = self.api.get_session_state(&session).await?;
+            match state_response.state.as_ref() {
                 "WaitingForResources" | "Provisioning" => {
                     println!("Waiting for session to get ready");
                 }
@@ -144,12 +145,15 @@ impl GamestreamingClient {
                 }
                 "Failed" => {
                     println!("Failed to provision session");
-                    return Err(GsError::Provisioning("Received failed state".into()));
+                    return Err(GsError::Provisioning(format!(
+                        "Received failed state - error: {:?}",
+                        state_response.error_details
+                    )));
                 }
                 unknown_state => {
                     return Err(GsError::Provisioning(format!(
-                        "Unhandled state: {}",
-                        unknown_state
+                        "Unhandled state: {} - error: {:?}",
+                        unknown_state, state_response.error_details
                     )));
                 }
             }
