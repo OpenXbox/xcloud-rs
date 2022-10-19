@@ -1,21 +1,20 @@
 use gamestreaming_webrtc::api::GssvApi;
-use std::io;
+use xal::utils::TokenStore;
+
+const TOKENS_FILEPATH: &str = "tokens.json";
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    println!(
-        r#"!!! ACTION REQUIRED !!!
-Paste the GSSV Token and hit [ENTER]"#
-    );
-
-    let mut gssv_token = String::new();
-    let _ = io::stdin().read_line(&mut gssv_token)?;
-
-    // Strip newline
-    let gssv_token = gssv_token.strip_suffix('\n').unwrap();
+    let ts = match TokenStore::load(TOKENS_FILEPATH) {
+        Ok(ts) => ts,
+        Err(err) => {
+            println!("Failed to load tokens!");
+            return Err(err);
+        }
+    };
 
     println!("Logging in");
-    let home_api = GssvApi::login_xhome(gssv_token).await?;
+    let home_api = GssvApi::login_xhome(&ts.gssv_token.token_data.token).await?;
 
     println!("Fetching consoles");
     let resp = home_api.get_consoles().await?;
