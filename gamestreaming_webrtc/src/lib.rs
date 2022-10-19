@@ -2,6 +2,8 @@ pub mod api;
 pub mod error;
 mod packets;
 mod serde_helpers;
+use std::str::FromStr;
+
 use chrono::{Duration, Utc};
 
 use api::{ConsolesResponse, SessionResponse, TitleResult};
@@ -9,26 +11,68 @@ use api::{ConsolesResponse, SessionResponse, TitleResult};
 use crate::api::GssvApi;
 use crate::error::GsError;
 
+#[derive(Debug, Eq, PartialEq)]
+pub enum Platform {
+    Cloud,
+    Home,
+}
+
+impl FromStr for Platform {
+    type Err = GsError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let platform = match s.to_lowercase().as_ref() {
+            "home" => Platform::Home,
+            "cloud" => Platform::Cloud,
+            v => return Err(GsError::InvalidPlatform(v.into())),
+        };
+        Ok(platform)
+    }
+}
+
+impl ToString for Platform {
+    fn to_string(&self) -> String {
+        let str = match self {
+            Platform::Cloud => "cloud",
+            Platform::Home => "home",
+        };
+        str.to_owned()
+    }
+}
+
 pub struct GamestreamingClient {
-    xhome: GssvApi,
-    xcloud: GssvApi,
+    api: GssvApi,
     transfer_token: String,
+    platform: Platform,
 }
 
 impl GamestreamingClient {
     const CONNECTION_TIMEOUT_SECS: i64 = 30;
 
-    pub async fn create(gssv_token: &str, xcloud_transfer_token: &str) -> Result<Self, GsError> {
+    pub async fn create(
+        platform: Platform,
+        gssv_token: &str,
+        xcloud_transfer_token: &str,
+    ) -> Result<Self, GsError> {
         Ok(Self {
-            xhome: GssvApi::login_xcloud(gssv_token).await?,
-            xcloud: GssvApi::login_xhome(gssv_token).await?,
+            api: match platform {
+                Platform::Cloud => GssvApi::login_xcloud(gssv_token).await?,
+                Platform::Home => GssvApi::login_xhome(gssv_token).await?,
+            },
             transfer_token: xcloud_transfer_token.into(),
+            platform,
         })
     }
 
     pub async fn lookup_games(&self) -> Result<Vec<TitleResult>, GsError> {
+        if self.platform != Platform::Cloud {
+            return Err(GsError::InvalidPlatform(
+                "Cannot fetch games for this platform".into(),
+            ));
+        }
+
         Ok(self
-            .xcloud
+            .api
             .get_titles()
             .await
             .map_err(GsError::ApiError)?
@@ -36,56 +80,53 @@ impl GamestreamingClient {
     }
 
     pub async fn lookup_consoles(&self) -> Result<ConsolesResponse, GsError> {
-        self.xhome.get_consoles().await.map_err(GsError::ApiError)
+        if self.platform != Platform::Home {
+            return Err(GsError::InvalidPlatform(
+                "Cannot fetch consoles for this platform".into(),
+            ));
+        }
+        self.api.get_consoles().await.map_err(GsError::ApiError)
     }
 
     async fn start_stream(
         &self,
-        platform: &str,
         server_id: Option<&str>,
         title_id: Option<&str>,
     ) -> Result<SessionResponse, GsError> {
-        let api = match platform {
-            "home" => {
-                if title_id.is_some() || server_id.is_none() {
+        let session = match self.platform {
+            Platform::Cloud => match title_id {
+                None => {
                     return Err(GsError::Provisioning(
-                        "Invalid params to home stream, no server id or title id was provided"
-                            .into(),
+                        "No title id provided to start stream".into(),
                     ));
                 }
-                &self.xhome
-            }
-            "cloud" => {
-                if server_id.is_some() || title_id.is_none() {
+                title_id => self.api.start_session(None, title_id).await?,
+            },
+            Platform::Home => match server_id {
+                None => {
                     return Err(GsError::Provisioning(
-                        "Invalid params to cloud stream, no title id or server id was provided"
-                            .into(),
+                        "No server id provided to start stream".into(),
                     ));
                 }
-                &self.xcloud
-            }
-            v => {
-                return Err(GsError::Provisioning(format!(
-                    "Invalid platform, expected 'home' or 'cloud', got '{}'",
-                    v
-                )))
-            }
+                server_id => self.api.start_session(server_id, None).await?,
+            },
         };
 
-        let session = api.start_session(server_id, title_id).await?;
         let start_time = Utc::now();
 
         while Utc::now() - start_time
             < Duration::seconds(GamestreamingClient::CONNECTION_TIMEOUT_SECS)
         {
-            match api.get_session_state(&session).await?.state.as_ref() {
+            match self.api.get_session_state(&session).await?.state.as_ref() {
                 "WaitingForResources" | "Provisioning" => {
                     println!("Waiting for session to get ready");
                 }
                 "ReadyToConnect" => {
                     println!("Stream is ready to connect");
-                    if let Err(connect_err) =
-                        api.session_connect(&session, &self.transfer_token).await
+                    if let Err(connect_err) = self
+                        .api
+                        .session_connect(&session, &self.transfer_token)
+                        .await
                     {
                         println!("Failed to connect to session");
                         return Err(connect_err.into());
@@ -110,11 +151,21 @@ impl GamestreamingClient {
     }
 
     pub async fn start_stream_xcloud(&self, title_id: &str) -> Result<SessionResponse, GsError> {
-        self.start_stream("cloud", None, Some(title_id)).await
+        if self.platform != Platform::Cloud {
+            return Err(GsError::InvalidPlatform(
+                "Attempted to start XCloud stream via Home API".into(),
+            ));
+        }
+        self.start_stream(None, Some(title_id)).await
     }
 
     pub async fn start_stream_xhome(&self, server_id: &str) -> Result<SessionResponse, GsError> {
-        self.start_stream("home", Some(server_id), None).await
+        if self.platform != Platform::Home {
+            return Err(GsError::InvalidPlatform(
+                "Attempted to start Home stream via XCloud API".into(),
+            ));
+        }
+        self.start_stream(Some(server_id), None).await
     }
 
     pub async fn exchange_ice(&self) {}

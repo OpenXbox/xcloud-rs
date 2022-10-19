@@ -21,6 +21,8 @@ where
 
 #[derive(Error, Debug)]
 pub enum GsError {
+    #[error("Invalid platform provided")]
+    InvalidPlatform(String),
     #[error(transparent)]
     ApiError(#[from] GssvApiError),
     #[error("Connection provisioning failed")]

@@ -1,4 +1,4 @@
-use gamestreaming_webrtc::GamestreamingClient;
+use gamestreaming_webrtc::{GamestreamingClient, Platform};
 use std::io;
 
 #[tokio::main]
@@ -23,7 +23,7 @@ Paste the XCloud Transfer Token and hit [ENTER]"#
     // Strip newline
     let xcloud_transfer_token = xcloud_transfer_token.strip_suffix('\n').unwrap();
 
-    let _ = GamestreamingClient::create(gssv_token, xcloud_transfer_token).await?;
+    let _ = GamestreamingClient::create(Platform::Cloud, gssv_token, xcloud_transfer_token).await?;
 
     todo!("Implement client");
 }

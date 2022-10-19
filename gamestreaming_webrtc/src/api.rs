@@ -18,7 +18,7 @@ pub enum GssvApiError {
 pub struct GssvApi {
     client: Client,
     base_url: Url,
-    platform: &'static str,
+    pub platform: &'static str,
 }
 
 impl GssvApi {
