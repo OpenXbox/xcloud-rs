@@ -1,12 +1,18 @@
 pub mod api;
 pub mod error;
 mod packets;
+mod sdp;
 mod serde_helpers;
 use std::str::FromStr;
 
 use chrono::{Duration, Utc};
 
-use api::{ConsolesResponse, SessionResponse, TitleResult};
+use api::{
+    ConsolesResponse, IceExchangeResponse, SdpExchangeResponse, SessionResponse, TitleResult,
+};
+use sdp::SdpSessionDescription;
+use webrtc::ice_transport::ice_candidate::RTCIceCandidateInit;
+use webrtc::sdp::SessionDescription;
 
 use crate::api::GssvApi;
 use crate::error::GsError;
@@ -168,9 +174,29 @@ impl GamestreamingClient {
         self.start_stream(Some(server_id), None).await
     }
 
-    pub async fn exchange_ice(&self) {}
+    pub async fn exchange_sdp(
+        &self,
+        session: &SessionResponse,
+        sdp: SessionDescription,
+    ) -> Result<SdpExchangeResponse, GsError> {
+        self.api
+            .set_sdp(session, &SdpSessionDescription(sdp).to_string())
+            .await
+            .map_err(GsError::ApiError)?;
+        self.api.get_sdp(session).await.map_err(GsError::ApiError)
+    }
 
-    pub async fn exchange_sdp(&self) {}
+    pub async fn exchange_ice(
+        &self,
+        session: &SessionResponse,
+        ice_candidate_init: Vec<RTCIceCandidateInit>,
+    ) -> Result<IceExchangeResponse, GsError> {
+        self.api
+            .set_ice(session, ice_candidate_init)
+            .await
+            .map_err(GsError::ApiError)?;
+        self.api.get_ice(session).await.map_err(GsError::ApiError)
+    }
 }
 
 #[cfg(test)]
