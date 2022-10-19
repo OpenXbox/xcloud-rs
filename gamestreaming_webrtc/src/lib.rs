@@ -157,6 +157,7 @@ impl GamestreamingClient {
                     )));
                 }
             }
+            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
         }
 
         Err(GsError::Provisioning(
