@@ -11,8 +11,10 @@ use wry::{
     },
     webview::{Url, WebViewBuilder},
 };
-use xal::authenticator::XalAuthenticator;
 use xal::oauth2::PkceCodeVerifier;
+use xal::{authenticator::XalAuthenticator, utils::TokenStore};
+
+const TOKENS_FILEPATH: &str = "tokens.json";
 
 async fn continue_auth(
     xal: &mut XalAuthenticator,
@@ -59,7 +61,13 @@ async fn continue_auth(
         .await?;
     println!("Transfer token={:?}", transfer_token);
 
-    Ok(())
+    let ts = TokenStore {
+        //wl_token,
+        sisu_tokens: auth_response,
+        gssv_token,
+        xcloud_transfer_token: transfer_token,
+    };
+    ts.save(TOKENS_FILEPATH)
 }
 
 enum UserEvent {
@@ -68,6 +76,11 @@ enum UserEvent {
 
 fn main() -> wry::Result<()> {
     let mut xal = XalAuthenticator::default();
+
+    if let Ok(ts) = TokenStore::load("tokens.json") {
+        todo!("TODO: Refresh tokens -> {:?}", ts)
+    }
+
     let (code_challenge, code_verifier) = XalAuthenticator::get_code_challenge();
     let device_token =
         async_runtime::block_on(xal.get_device_token()).expect("Failed to fetch device token");
