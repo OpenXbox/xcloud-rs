@@ -601,14 +601,14 @@ pub struct TitleTab {
 #[serde(rename_all = "camelCase")]
 pub struct TitleDetails {
     pub product_id: String,
-    pub xbox_title_id: String,
+    pub xbox_title_id: u32,
     pub has_entitlement: bool,
     pub blocked_by_family_safety: bool,
     pub supports_in_app_purchases: bool,
-    pub supported_tabs: Option<TitleTab>,
+    pub supported_tabs: Option<Vec<TitleTab>>,
     pub native_touch: bool,
     pub opt_out_of_default_layout_touch_controls: bool,
-    pub programs: Vec<String>,
+    pub programs: Option<Vec<String>>,
     pub is_free_in_store: bool,
 }
 
