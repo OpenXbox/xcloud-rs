@@ -653,22 +653,28 @@ pub struct SessionStateResponse {
 
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
-struct ChatConfigurationResponse {
+pub struct ChatConfigurationResponse {
     format: ChatAudioFormat,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct SdpResponse {
-    chat: u16,
-    chat_configuration: ChatConfigurationResponse,
-    control: u16,
-    input: u16,
-    message: u16,
-    message_type: String,
-    sdp: String,
-    sdp_type: String,
-    status: String,
+    pub chat: u16,
+    pub chat_configuration: ChatConfigurationResponse,
+    pub control: u16,
+    pub input: u16,
+    pub message: u16,
+    /// Usually 'answer'
+    pub message_type: Option<String>,
+    /// SDP data
+    pub sdp: Option<String>,
+    /// Usually 'answer'
+    pub sdp_type: Option<String>,
+    // Usually 'success'
+    pub status: Option<String>,
+    /// Only returned on error
+    pub debug_info: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -775,7 +781,7 @@ mod tests {
         println!("{:?}", json);
         assert!(json.is_ok());
 
-        let data = json.unwrap().exchange_response.sdp;
+        let data = json.unwrap().exchange_response.sdp.unwrap();
         let mut cursor = std::io::Cursor::new(&data);
         let result = SessionDescription::unmarshal(&mut cursor);
         println!("Deserialized={:?}", result);
@@ -804,7 +810,7 @@ mod tests {
         println!("{:?}", json);
         assert!(json.is_ok());
 
-        let data = json.unwrap().exchange_response.sdp;
+        let data = json.unwrap().exchange_response.sdp.unwrap();
         let mut cursor = std::io::Cursor::new(&data);
         let result = SessionDescription::unmarshal(&mut cursor);
         assert!(result.is_ok());
