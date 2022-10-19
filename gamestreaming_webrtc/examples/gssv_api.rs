@@ -15,10 +15,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("Logging in");
     let home_api = GssvApi::login_xhome(&ts.gssv_token.token_data.token).await?;
-
     println!("Fetching consoles");
-    let resp = home_api.get_consoles().await?;
-    println!("{:?}", resp);
+    println!("{:?}", home_api.get_consoles().await);
+
+    let xcloud_api = GssvApi::login_xcloud(&ts.gssv_token.token_data.token).await?;
+    println!("Fetching titles");
+    println!("{:?}", xcloud_api.get_titles().await);
 
     Ok(())
 }
