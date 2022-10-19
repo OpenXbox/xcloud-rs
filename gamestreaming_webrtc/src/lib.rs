@@ -142,6 +142,10 @@ impl GamestreamingClient {
                     println!("Game session is ready!");
                     return Ok(session);
                 }
+                "Failed" => {
+                    println!("Failed to provision session");
+                    return Err(GsError::Provisioning("Received failed state".into()));
+                }
                 unknown_state => {
                     return Err(GsError::Provisioning(format!(
                         "Unhandled state: {}",
