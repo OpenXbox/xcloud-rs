@@ -546,6 +546,12 @@ pub struct ClientCloudSettings {
 
 /* Responses */
 #[derive(Serialize, Deserialize, Debug)]
+pub struct ErrorDetails {
+    code: String,
+    message: String,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct OfferingSettings {
     pub allow_region_selection: bool,
@@ -642,7 +648,7 @@ pub enum SessionState {
 #[serde(rename_all = "camelCase")]
 pub struct SessionStateResponse {
     pub state: String,
-    pub error_details: Option<String>,
+    pub error_details: Option<ErrorDetails>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -670,7 +676,7 @@ pub struct SdpResponse {
 pub struct SdpExchangeResponse {
     #[serde(with = "crate::serde_helpers::json_string")]
     pub exchange_response: SdpResponse,
-    pub error_details: Option<String>,
+    pub error_details: Option<ErrorDetails>,
 }
 
 #[derive(Deserialize, Debug)]
@@ -678,7 +684,7 @@ pub struct SdpExchangeResponse {
 pub struct IceExchangeResponse {
     #[serde(with = "crate::serde_helpers::json_string_ice_workaround")]
     pub exchange_response: Vec<RTCIceCandidateInit>,
-    pub error_details: Option<String>,
+    pub error_details: Option<ErrorDetails>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
