@@ -13,12 +13,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     };
 
-    let _ = GamestreamingClient::create(
+    let xcloud = GamestreamingClient::create(
         Platform::Cloud,
         &ts.gssv_token.token_data.token,
         &ts.xcloud_transfer_token.lpt,
     )
     .await?;
+
+    match xcloud.lookup_games().await?.first() {
+        Some(title) => {
+            println!("Starting title: {:?}", title);
+            println!(
+                "Session started successfully: {:?}",
+                xcloud.start_stream_xcloud(&title.title_id).await?
+            );
+        }
+        None => {
+            return Err("No titles received from API".into());
+        }
+    }
 
     todo!("Implement client");
 }
