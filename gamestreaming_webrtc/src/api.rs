@@ -94,11 +94,8 @@ impl GssvApi {
     }
 
     fn session_url(&self, session: &SessionResponse, path: &str) -> Url {
-        self.base_url
-            .join(&session.session_path)
-            .unwrap()
-            .join(path)
-            .unwrap()
+        let path = session.session_path.to_owned() + path;
+        self.base_url.join(&path).expect("Failed to join string")
     }
 
     async fn get_json<T>(&self, url: Url, headers: Option<HeaderMap>) -> Result<T, GssvApiError>
