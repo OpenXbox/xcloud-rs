@@ -1,29 +1,24 @@
 use gamestreaming_webrtc::{GamestreamingClient, Platform};
-use std::io;
+use xal::utils::TokenStore;
+
+const TOKENS_FILEPATH: &str = "tokens.json";
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    println!(
-        r#"!!! ACTION REQUIRED !!!
-Paste the GSSV Token and hit [ENTER]"#
-    );
+    let ts = match TokenStore::load(TOKENS_FILEPATH) {
+        Ok(ts) => ts,
+        Err(err) => {
+            println!("Failed to load tokens!");
+            return Err(err);
+        }
+    };
 
-    let mut gssv_token = String::new();
-    let _ = io::stdin().read_line(&mut gssv_token)?;
-    // Strip newline
-    let gssv_token = gssv_token.strip_suffix('\n').unwrap();
-
-    println!(
-        r#"!!! ACTION REQUIRED !!!
-Paste the XCloud Transfer Token and hit [ENTER]"#
-    );
-
-    let mut xcloud_transfer_token = String::new();
-    let _ = io::stdin().read_line(&mut xcloud_transfer_token)?;
-    // Strip newline
-    let xcloud_transfer_token = xcloud_transfer_token.strip_suffix('\n').unwrap();
-
-    let _ = GamestreamingClient::create(Platform::Cloud, gssv_token, xcloud_transfer_token).await?;
+    let _ = GamestreamingClient::create(
+        Platform::Cloud,
+        &ts.gssv_token.token_data.token,
+        &ts.xcloud_transfer_token.lpt,
+    )
+    .await?;
 
     todo!("Implement client");
 }
