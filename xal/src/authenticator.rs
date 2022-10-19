@@ -27,7 +27,7 @@ use uuid;
 type Error = Box<dyn std::error::Error>;
 type Result<T> = std::result::Result<T, Error>;
 
-type SpecialTokenResponse = WindowsLiveTokenResponse<EmptyExtraTokenFields>;
+pub type SpecialTokenResponse = WindowsLiveTokenResponse<EmptyExtraTokenFields>;
 type SpecialClient = OAuthClient<
     BasicErrorResponse,
     SpecialTokenResponse,

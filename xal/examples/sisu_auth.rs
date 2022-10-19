@@ -2,10 +2,18 @@ use std::io;
 use url::Url;
 use xal::authenticator::XalAuthenticator;
 use xal::oauth2::PkceCodeVerifier;
+use xal::utils::TokenStore;
+
+const TOKENS_FILEPATH: &str = "tokens.json";
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut xal = XalAuthenticator::default();
+
+    if let Ok(ts) = TokenStore::load("tokens.json") {
+        todo!("TODO: Refresh tokens -> {:?}", ts)
+    }
+
     let (code_challenge, code_verifier) = XalAuthenticator::get_code_challenge();
 
     println!("Getting device token...");
@@ -108,6 +116,14 @@ When finished, paste the Redirect URL and hit [ENTER]"#,
             )
             .await?;
         println!("Transfer token={:?}", transfer_token);
+
+        let ts = TokenStore {
+            //wl_token,
+            sisu_tokens: auth_response,
+            gssv_token,
+            xcloud_transfer_token: transfer_token,
+        };
+        ts.save(TOKENS_FILEPATH)?
     } else {
         println!("No authorization code fetched :(");
     }
