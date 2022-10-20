@@ -45,6 +45,55 @@ impl DekuWrite for InputReportTypeFlags {
     }
 }
 
+#[bitflags]
+#[repr(u16)]
+#[derive(Copy, Clone, Debug, PartialEq)]
+enum GamepadButton {
+    Nexus = 1 << 1,
+    Menu = 1 << 2,
+    View = 1 << 3,
+    A = 1 << 4,
+    B = 1 << 5,
+    X = 1 << 6,
+    Y = 1 << 7,
+    DPadUp = 1 << 8,
+    DPadDown = 1 << 9,
+    DPadLeft = 1 << 10,
+    DPadRight = 1 << 11,
+    LeftShoulder = 1 << 12,
+    RightShoulder = 1 << 13,
+    LeftThumb = 1 << 14,
+    RightThumb = 1 << 15,
+}
+
+/// Wrapper around input report type flags
+#[derive(Debug, PartialEq)]
+struct GamepadButtonFlags(BitFlags<GamepadButton>);
+
+impl<'a> DekuRead<'a> for GamepadButtonFlags {
+    fn read(
+        input: &'a BitSlice<Msb0, u8>,
+        _ctx: (),
+    ) -> Result<(&'a BitSlice<Msb0, u8>, Self), DekuError>
+    where
+        Self: Sized,
+    {
+        let (rest, flags) = u16::read(input, ())?;
+        let res = BitFlags::from_bits(flags)
+            .map_err(|_| DekuError::Parse("Failed to read input report type flags".into()))?;
+
+        Ok((rest, GamepadButtonFlags(res)))
+    }
+}
+
+impl DekuWrite for GamepadButtonFlags {
+    fn write(&self, output: &mut BitVec<Msb0, u8>, _ctx: ()) -> Result<(), DekuError> {
+        // TODO: Verify little endian is correct
+        output.extend(self.0.bits_c().to_le_bytes());
+        Ok(())
+    }
+}
+
 #[derive(Debug, PartialEq, DekuRead, DekuWrite)]
 struct VibrationReport {
     /// Rumble Type: 0 = FourMotorRumble
@@ -82,7 +131,7 @@ struct MetadataReport {
 #[derive(Debug, PartialEq, DekuRead, DekuWrite)]
 struct GamepadData {
     gamepad_index: u8,
-    button_mask: u16,
+    button_mask: GamepadButtonFlags,
     left_thumb_x: i16,
     left_thumb_y: i16,
     right_thumb_x: i16,
