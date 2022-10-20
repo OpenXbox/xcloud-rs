@@ -40,7 +40,7 @@ pub trait GssvChannel {
     fn name() -> &'static str;
     fn on_open(&self);
     fn on_close(&self);
-    fn start(&self) {
+    fn start(&mut self) {
         todo!("Channel start not implemented")
     }
     fn on_message(&self, msg: &DataChannelMsg) -> Result<(), Box<dyn std::error::Error>> {

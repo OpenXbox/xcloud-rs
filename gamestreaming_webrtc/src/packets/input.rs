@@ -6,8 +6,8 @@ use enumflags2::{bitflags, BitFlags};
 
 #[bitflags]
 #[repr(u8)]
-#[derive(Copy, Clone, Debug, PartialEq)]
-enum InputReportType {
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub enum InputReportType {
     Metadata = 1,
     GamepadReport = 2,
     ClientMetadata = 8,
@@ -18,8 +18,8 @@ enum InputReportType {
 }
 
 /// Wrapper around input report type flags
-#[derive(Debug, PartialEq)]
-struct InputReportTypeFlags(BitFlags<InputReportType>);
+#[derive(Debug, Default, Eq, PartialEq)]
+pub struct InputReportTypeFlags(BitFlags<InputReportType>);
 
 impl<'a> DekuRead<'a> for InputReportTypeFlags {
     fn read(
@@ -47,8 +47,8 @@ impl DekuWrite for InputReportTypeFlags {
 
 #[bitflags]
 #[repr(u16)]
-#[derive(Copy, Clone, Debug, PartialEq)]
-enum GamepadButton {
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub enum GamepadButton {
     Nexus = 1 << 1,
     Menu = 1 << 2,
     View = 1 << 3,
@@ -67,8 +67,8 @@ enum GamepadButton {
 }
 
 /// Wrapper around input report type flags
-#[derive(Debug, PartialEq)]
-struct GamepadButtonFlags(BitFlags<GamepadButton>);
+#[derive(Debug, Eq, PartialEq)]
+pub struct GamepadButtonFlags(BitFlags<GamepadButton>);
 
 impl<'a> DekuRead<'a> for GamepadButtonFlags {
     fn read(
@@ -94,75 +94,75 @@ impl DekuWrite for GamepadButtonFlags {
     }
 }
 
-#[derive(Debug, PartialEq, DekuRead, DekuWrite)]
-struct VibrationReport {
+#[derive(Debug, Eq, PartialEq, DekuRead, DekuWrite)]
+pub struct VibrationReport {
     /// Rumble Type: 0 = FourMotorRumble
-    rumble_type: u8,
-    gamepad_id: u8,
+    pub rumble_type: u8,
+    pub gamepad_id: u8,
 
-    left_motor_percent: u8,
-    right_motor_percent: u8,
-    left_trigger_motor_percent: u8,
-    right_trigger_motor_percent: u8,
-    duration_ms: u16,
-    delay_ms: u16,
-    repeat: u8,
+    pub left_motor_percent: u8,
+    pub right_motor_percent: u8,
+    pub left_trigger_motor_percent: u8,
+    pub right_trigger_motor_percent: u8,
+    pub duration_ms: u16,
+    pub delay_ms: u16,
+    pub repeat: u8,
 }
 
-#[derive(Debug, PartialEq, DekuRead, DekuWrite)]
-struct InputMetadataEntry {
-    server_data_key: u32,
-    first_frame_packet_arrival_time_ms: u32,
-    frame_submitted_time_ms: u32,
-    frame_decoded_time_ms: u32,
-    frame_rendered_time_ms: u32,
-    frame_packet_time: u32,
-    frame_date_now: u32,
+#[derive(Debug, Eq, PartialEq, DekuRead, DekuWrite)]
+pub struct InputMetadataEntry {
+    pub server_data_key: u32,
+    pub first_frame_packet_arrival_time_ms: u32,
+    pub frame_submitted_time_ms: u32,
+    pub frame_decoded_time_ms: u32,
+    pub frame_rendered_time_ms: u32,
+    pub frame_packet_time: u32,
+    pub frame_date_now: u32,
 }
 
-#[derive(Debug, PartialEq, DekuRead, DekuWrite)]
-struct MetadataReport {
+#[derive(Debug, Eq, PartialEq, DekuRead, DekuWrite)]
+pub struct MetadataReport {
     #[deku(update = "self.metadata.len()")]
-    queue_len: u8,
+    pub queue_len: u8,
     #[deku(count = "queue_len")]
-    metadata: Vec<InputMetadataEntry>,
+    pub metadata: Vec<InputMetadataEntry>,
 }
 
-#[derive(Debug, PartialEq, DekuRead, DekuWrite)]
-struct GamepadData {
-    gamepad_index: u8,
-    button_mask: GamepadButtonFlags,
-    left_thumb_x: i16,
-    left_thumb_y: i16,
-    right_thumb_x: i16,
-    right_thumb_y: i16,
-    left_trigger: u16,
-    right_trigger: u16,
-    physical_physicality: u32,
-    virtual_physicality: u32,
+#[derive(Debug, Eq, PartialEq, DekuRead, DekuWrite)]
+pub struct GamepadData {
+    pub gamepad_index: u8,
+    pub button_mask: GamepadButtonFlags,
+    pub left_thumb_x: i16,
+    pub left_thumb_y: i16,
+    pub right_thumb_x: i16,
+    pub right_thumb_y: i16,
+    pub left_trigger: u16,
+    pub right_trigger: u16,
+    pub physical_physicality: u32,
+    pub virtual_physicality: u32,
 }
 
-#[derive(Debug, PartialEq, DekuRead, DekuWrite)]
-struct GamepadReport {
+#[derive(Debug, Eq, PartialEq, DekuRead, DekuWrite)]
+pub struct GamepadReport {
     #[deku(update = "self.gamepad_data.len()")]
-    queue_len: u8,
+    pub queue_len: u8,
     #[deku(count = "queue_len")]
-    gamepad_data: Vec<GamepadData>,
+    pub gamepad_data: Vec<GamepadData>,
+}
+
+#[derive(Debug, Default, Eq, PartialEq, DekuRead, DekuWrite)]
+pub struct ClientMetadataReport {
+    pub metadata: u8,
 }
 
 #[derive(Debug, PartialEq, DekuRead, DekuWrite)]
-struct ClientMetadataReport {
-    metadata: u8,
-}
-
-#[derive(Debug, PartialEq, DekuRead, DekuWrite)]
-struct SequenceInfo {
+pub struct SequenceInfo {
     sequence_num: u32,
     timestamp: f64,
 }
 
 #[derive(Debug, PartialEq, DekuRead, DekuWrite)]
-struct InputPacket {
+pub struct InputPacket {
     report_type: InputReportTypeFlags,
     #[deku(cond = "!report_type.0.contains(InputReportType::Vibration)")]
     // Skip sequence info on vibration packets
@@ -175,6 +175,45 @@ struct InputPacket {
     client_metadata_report: Option<ClientMetadataReport>,
     #[deku(cond = "report_type.0.contains(InputReportType::Vibration)")]
     vibration_report: Option<VibrationReport>,
+}
+
+impl InputPacket {
+    pub fn new(
+        sequence_num: u32,
+        timestamp: f64,
+        metadata_report: Option<MetadataReport>,
+        gamepad_report: Option<GamepadReport>,
+        client_metadata_report: Option<ClientMetadataReport>,
+    ) -> Self {
+        let report_type = {
+            // Create initial report type with no bits set
+            let mut tmp_type: InputReportTypeFlags = InputReportTypeFlags::default();
+
+            // Check which data will be contained
+            if metadata_report.is_some() {
+                tmp_type.0 |= InputReportType::Metadata;
+            }
+            if gamepad_report.is_some() {
+                tmp_type.0 |= InputReportType::GamepadReport;
+            }
+            if client_metadata_report.is_some() {
+                tmp_type.0 |= InputReportType::ClientMetadata;
+            }
+            tmp_type
+        };
+
+        Self {
+            report_type,
+            seq_info: Some(SequenceInfo {
+                sequence_num,
+                timestamp,
+            }),
+            metadata_report,
+            gamepad_report,
+            client_metadata_report,
+            vibration_report: None,
+        }
+    }
 }
 
 #[cfg(test)]

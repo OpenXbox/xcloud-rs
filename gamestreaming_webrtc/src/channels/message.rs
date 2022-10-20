@@ -22,7 +22,7 @@ impl GssvChannel for MessageChannel {
         todo!()
     }
 
-    fn start(&self) {
+    fn start(&mut self) {
         let auth_request = json!({
             "message":"authorizationRequest",
             "accessKey":"4BDB3609-C1F1-4195-9B37-FEFF45DA8B8E",
