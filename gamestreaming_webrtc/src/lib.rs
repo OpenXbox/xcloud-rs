@@ -192,20 +192,21 @@ impl GamestreamingClient {
             .map_err(GsError::ApiError)?;
         let sdp_response = self.api.get_sdp(session).await.map_err(GsError::ApiError)?;
         let error_str = match &sdp_response.exchange_response.status {
-            Some(status) => {
-                match status.as_ref() {
-                    "success" => {
-                        return Ok(sdp_response);
-                    },
-                    _ => "Answer status != success"
+            Some(status) => match status.as_ref() {
+                "success" => {
+                    return Ok(sdp_response);
                 }
-            }
+                _ => format!("Answer status != success => {:?}", sdp_response),
+            },
             _ => {
-                "SDP answer contains no status"
+                format!("SDP answer contains no status => {:?}", sdp_response)
             }
         };
 
-        Err(GsError::ConnectionExchange(format!("SDP failed, details={:?}", error_str)))
+        Err(GsError::ConnectionExchange(format!(
+            "SDP failed, message={}",
+            error_str
+        )))
     }
 
     pub async fn exchange_ice(
