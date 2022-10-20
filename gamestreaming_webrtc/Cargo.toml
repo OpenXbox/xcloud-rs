@@ -19,6 +19,7 @@ chrono = "0.4.22"
 [dev-dependencies]
 xal = { path = "../xal" }
 lazy_static = "1.4"
+anyhow = "1.0"
 
 [[example]]
 name = "webrtc-client"

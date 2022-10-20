@@ -1,6 +1,13 @@
+use anyhow::Result;
 use gamestreaming_webrtc::api::SessionResponse;
+use std::fs::File;
+use webrtc::media::io::h264_writer::H264Writer;
+use webrtc::media::io::ogg_writer::OggWriter;
+use webrtc::rtcp::payload_feedbacks::picture_loss_indication::PictureLossIndication;
+use webrtc::rtp_transceiver::rtp_receiver::RTCRtpReceiver;
+use webrtc::track::track_remote::TrackRemote;
 use std::sync::Arc;
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, Notify};
 use tokio::time::Duration;
 use webrtc::api::interceptor_registry::register_default_interceptors;
 use webrtc::api::media_engine::{MediaEngine, MIME_TYPE_H264, MIME_TYPE_OPUS};
@@ -124,6 +131,41 @@ lazy_static! {
     static ref ADDRESS: Arc<Mutex<String>> = Arc::new(Mutex::new(String::new()));
     static ref GATHERED_CANDIDATES: Arc<Mutex<Vec<RTCIceCandidate>>> = Arc::new(Mutex::new(vec![]));
 }
+
+async fn save_to_disk(
+    writer: Arc<Mutex<dyn webrtc::media::io::Writer + Send + Sync>>,
+    track: Arc<TrackRemote>,
+    notify: Arc<Notify>,
+) -> Result<()> {
+    loop {
+        tokio::select! {
+            result = track.read_rtp() => {
+                if let Ok((rtp_packet, _)) = result {
+                    let mut w = writer.lock().await;
+                    w.write_rtp(&rtp_packet)?;
+                }else{
+                    println!("file closing begin after read_rtp error");
+                    let mut w = writer.lock().await;
+                    if let Err(err) = w.close() {
+                        println!("file close err: {}", err);
+                    }
+                    println!("file closing end after read_rtp error");
+                    return Ok(());
+                }
+            }
+            _ = notify.notified() => {
+                println!("file closing begin after notified");
+                let mut w = writer.lock().await;
+                if let Err(err) = w.close() {
+                    println!("file close err: {}", err);
+                }
+                println!("file closing end after notified");
+                return Ok(());
+            }
+        }
+    }
+}
+
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -459,6 +501,70 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }))
         .await;
 
+    let (video_file, audio_file) = ("video.mkv", "audio.ogg");
+
+    let h264_writer: Arc<Mutex<dyn webrtc::media::io::Writer + Send + Sync>> =
+        Arc::new(Mutex::new(H264Writer::new(File::create(video_file)?)));
+    let ogg_writer: Arc<Mutex<dyn webrtc::media::io::Writer + Send + Sync>> = Arc::new(Mutex::new(
+        OggWriter::new(File::create(audio_file)?, 48000, 2)?,
+    ));
+
+    let notify_tx = Arc::new(Notify::new());
+    let notify_rx = notify_tx.clone();
+
+    // Set a handler for when a new remote track starts, this handler saves buffers to disk as
+    // an ivf file, since we could have multiple video tracks we provide a counter.
+    // In your application this is where you would handle/process video
+    let pc = Arc::downgrade(&peer_connection);
+    peer_connection.on_track(Box::new(move |track: Option<Arc<TrackRemote>>, _receiver: Option<Arc<RTCRtpReceiver>>| {
+        if let Some(track) = track {
+            // Send a PLI on an interval so that the publisher is pushing a keyframe every rtcpPLIInterval
+            let media_ssrc = track.ssrc();
+            let pc2 = pc.clone();
+            tokio::spawn(async move {
+                let mut result = Result::<usize>::Ok(0);
+                while result.is_ok() {
+                    let timeout = tokio::time::sleep(Duration::from_secs(3));
+                    tokio::pin!(timeout);
+
+                    tokio::select! {
+                        _ = timeout.as_mut() =>{
+                            if let Some(pc) = pc2.upgrade(){
+                                result = pc.write_rtcp(&[Box::new(PictureLossIndication{
+                                    sender_ssrc: 0,
+                                    media_ssrc,
+                                })]).await.map_err(Into::into);
+                            }else {
+                                break;
+                            }
+                        }
+                    };
+                }
+            });
+
+            let notify_rx2 = Arc::clone(&notify_rx);
+            let h264_writer2 = Arc::clone(&h264_writer);
+            let ogg_writer2 = Arc::clone(&ogg_writer);
+            Box::pin(async move {
+                let codec = track.codec().await;
+                let mime_type = codec.capability.mime_type.to_lowercase();
+                if mime_type == MIME_TYPE_OPUS.to_lowercase() {
+                    println!("Got Opus track, saving to disk as output.opus (48 kHz, 2 channels)");     
+                    tokio::spawn(async move {
+                        let _ = save_to_disk(ogg_writer2, track, notify_rx2).await;
+                    });
+                } else if mime_type == MIME_TYPE_H264.to_lowercase() {
+                    println!("Got h264 track, saving to disk as output.h264");
+                     tokio::spawn(async move {
+                         let _ = save_to_disk(h264_writer2, track, notify_rx2).await;
+                     });
+                }
+            })
+        }else {
+            Box::pin(async {})
+        }
+	})).await;
+
     // Create an offer to send to the other process
     let offer = peer_connection.create_offer(None).await?;
     let sdp_offer_string = offer.clone().sdp;
@@ -515,8 +621,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!("");
         }
     };
-
-    peer_connection.close().await?;
 
     Ok(())
 }
