@@ -14,7 +14,7 @@ impl GssvChannel for ChatChannel {
         todo!()
     }
 
-    fn start(&self) {
+    fn start(&mut self) {
         todo!()
     }
 

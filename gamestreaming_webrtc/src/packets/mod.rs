@@ -1,3 +1,3 @@
-mod audio;
-mod input;
-mod video;
+pub mod audio;
+pub mod input;
+pub mod video;
