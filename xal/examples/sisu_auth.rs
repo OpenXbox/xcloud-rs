@@ -10,8 +10,16 @@ const TOKENS_FILEPATH: &str = "tokens.json";
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut xal = XalAuthenticator::default();
 
-    if let Ok(ts) = TokenStore::load("tokens.json") {
-        todo!("TODO: Refresh tokens -> {:?}", ts)
+    if let Ok(mut ts) = TokenStore::load(TOKENS_FILEPATH) {
+        let refreshed_xcoud = xal
+            .exchange_refresh_token_for_xcloud_transfer_token(&ts.xcloud_transfer_token.into())
+            .await?;
+        println!("{:?}", refreshed_xcoud);
+
+        ts.xcloud_transfer_token = refreshed_xcoud;
+        ts.save(TOKENS_FILEPATH)?;
+
+        return Ok(());
     }
 
     let (code_challenge, code_verifier) = XalAuthenticator::get_code_challenge();

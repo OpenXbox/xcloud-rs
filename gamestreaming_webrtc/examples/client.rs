@@ -401,9 +401,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     chat_channel
         .on_message(Box::new(move |msg: DataChannelMessage| {
             let msg_str = match String::from_utf8(msg.data.to_vec()) {
-                Ok(str) => {
-                    str
-                },
+                Ok(str) => str,
                 _ => {
                     format!("Binary={:?}", msg.data)
                 }
@@ -417,14 +415,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     control_channel
         .on_message(Box::new(move |msg: DataChannelMessage| {
             let msg_str = match String::from_utf8(msg.data.to_vec()) {
-                Ok(str) => {
-                    str
-                },
+                Ok(str) => str,
                 _ => {
                     format!("Binary={:?}", msg.data)
                 }
             };
-            println!("Message from DataChannel '{}': '{}'", control_label, msg_str);
+            println!(
+                "Message from DataChannel '{}': '{}'",
+                control_label, msg_str
+            );
             Box::pin(async {})
         }))
         .await;
@@ -433,9 +432,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     input_channel
         .on_message(Box::new(move |msg: DataChannelMessage| {
             let msg_str = match String::from_utf8(msg.data.to_vec()) {
-                Ok(str) => {
-                    str
-                },
+                Ok(str) => str,
                 _ => {
                     format!("Binary={:?}", msg.data)
                 }
@@ -449,14 +446,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     message_channel
         .on_message(Box::new(move |msg: DataChannelMessage| {
             let msg_str = match String::from_utf8(msg.data.to_vec()) {
-                Ok(str) => {
-                    str
-                },
+                Ok(str) => str,
                 _ => {
                     format!("Binary={:?}", msg.data)
                 }
             };
-            println!("Message from DataChannel '{}': '{}'", message_label, msg_str);
+            println!(
+                "Message from DataChannel '{}': '{}'",
+                message_label, msg_str
+            );
             Box::pin(async {})
         }))
         .await;
