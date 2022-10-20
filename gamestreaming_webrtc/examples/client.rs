@@ -1,11 +1,6 @@
 use anyhow::Result;
 use gamestreaming_webrtc::api::SessionResponse;
 use std::fs::File;
-use webrtc::media::io::h264_writer::H264Writer;
-use webrtc::media::io::ogg_writer::OggWriter;
-use webrtc::rtcp::payload_feedbacks::picture_loss_indication::PictureLossIndication;
-use webrtc::rtp_transceiver::rtp_receiver::RTCRtpReceiver;
-use webrtc::track::track_remote::TrackRemote;
 use std::sync::Arc;
 use tokio::sync::{Mutex, Notify};
 use tokio::time::Duration;
@@ -17,17 +12,22 @@ use webrtc::data_channel::data_channel_message::DataChannelMessage;
 use webrtc::ice_transport::ice_candidate::RTCIceCandidate;
 use webrtc::ice_transport::ice_server::RTCIceServer;
 use webrtc::interceptor::registry::Registry;
+use webrtc::media::io::h264_writer::H264Writer;
+use webrtc::media::io::ogg_writer::OggWriter;
 use webrtc::peer_connection::configuration::RTCConfiguration;
 use webrtc::peer_connection::math_rand_alpha;
 use webrtc::peer_connection::offer_answer_options::RTCOfferOptions;
 use webrtc::peer_connection::peer_connection_state::RTCPeerConnectionState;
 use webrtc::peer_connection::sdp::session_description::RTCSessionDescription;
 use webrtc::peer_connection::RTCPeerConnection;
+use webrtc::rtcp::payload_feedbacks::picture_loss_indication::PictureLossIndication;
 use webrtc::rtp_transceiver::rtp_codec::{
     RTCRtpCodecCapability, RTCRtpCodecParameters, RTPCodecType,
 };
+use webrtc::rtp_transceiver::rtp_receiver::RTCRtpReceiver;
 use webrtc::rtp_transceiver::rtp_transceiver_direction::RTCRtpTransceiverDirection;
 use webrtc::rtp_transceiver::RTCRtpTransceiverInit;
+use webrtc::track::track_remote::TrackRemote;
 
 use gamestreaming_webrtc::{GamestreamingClient, Platform};
 use xal::utils::TokenStore;
@@ -165,7 +165,6 @@ async fn save_to_disk(
         }
     }
 }
-
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
