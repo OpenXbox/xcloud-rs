@@ -280,6 +280,12 @@ pub mod response {
         pub user_id: String,
     }
 
+    impl From<XCloudTokenResponse> for RefreshToken {
+        fn from(t: XCloudTokenResponse) -> Self {
+            Self::new(t.refresh_token)
+        }
+    }
+
     #[derive(Debug, Serialize, Deserialize)]
     #[serde(rename_all = "PascalCase")]
     pub struct TitleEndpointCertificate {

@@ -77,8 +77,18 @@ enum UserEvent {
 fn main() -> wry::Result<()> {
     let mut xal = XalAuthenticator::default();
 
-    if let Ok(ts) = TokenStore::load("tokens.json") {
-        todo!("TODO: Refresh tokens -> {:?}", ts)
+    if let Ok(mut ts) = TokenStore::load(TOKENS_FILEPATH) {
+        let refreshed_xcoud = async_runtime::block_on(
+            xal.exchange_refresh_token_for_xcloud_transfer_token(&ts.xcloud_transfer_token.into()),
+        )
+        .expect("Failed to exchange refresh token for fresh XCloud transfer token");
+
+        println!("{:?}", refreshed_xcoud);
+        ts.xcloud_transfer_token = refreshed_xcoud;
+        ts.save(TOKENS_FILEPATH)
+            .expect("Failed to save refreshed XCloud token");
+
+        return Ok(());
     }
 
     let (code_challenge, code_verifier) = XalAuthenticator::get_code_challenge();
