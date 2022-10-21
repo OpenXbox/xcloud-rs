@@ -1,5 +1,5 @@
 use anyhow::Result;
-use gamestreaming_webrtc::api::SessionResponse;
+use gamestreaming_webrtc::api::{IceCandidate, SessionResponse};
 use std::fs::File;
 use std::sync::Arc;
 use tokio::sync::{Mutex, Notify};
@@ -9,7 +9,7 @@ use webrtc::api::media_engine::{MediaEngine, MIME_TYPE_H264, MIME_TYPE_OPUS};
 use webrtc::api::APIBuilder;
 use webrtc::data_channel::data_channel_init::RTCDataChannelInit;
 use webrtc::data_channel::data_channel_message::DataChannelMessage;
-use webrtc::ice_transport::ice_candidate::RTCIceCandidate;
+use webrtc::ice_transport::ice_candidate::{RTCIceCandidate, RTCIceCandidateInit};
 use webrtc::ice_transport::ice_server::RTCIceServer;
 use webrtc::interceptor::registry::Registry;
 use webrtc::media::io::h264_writer::H264Writer;
@@ -595,7 +595,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut candidates_ready = vec![];
 
     for c in css {
-        let r = c.to_json().await?;
+        let json = c.to_json().await?;
+        let r = IceCandidate {
+            candidate: json.candidate,
+            sdp_mid: json.sdp_mid,
+            sdp_mline_index: json.sdp_mline_index,
+            username_fragment: json.username_fragment,
+        };
         candidates_ready.push(r);
     }
     let ice_response = xcloud.exchange_ice(&session, candidates_ready).await?;
@@ -608,7 +614,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!("End of candidates, jumping out");
             break;
         }
-        peer_connection.add_ice_candidate(candidate).await?;
+        let c = RTCIceCandidateInit {
+            candidate: candidate.candidate,
+            sdp_mid: candidate.sdp_mid,
+            sdp_mline_index: candidate.sdp_mline_index,
+            username_fragment: candidate.username_fragment,
+        };
+        peer_connection.add_ice_candidate(c).await?;
     }
 
     println!("Press ctrl-c to stop");

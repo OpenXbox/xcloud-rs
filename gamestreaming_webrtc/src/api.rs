@@ -1,7 +1,7 @@
 use reqwest::{header, header::HeaderMap, Client, ClientBuilder, StatusCode, Url};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
-use serde_json;
 use serde_aux::prelude::*;
+use serde_json;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
