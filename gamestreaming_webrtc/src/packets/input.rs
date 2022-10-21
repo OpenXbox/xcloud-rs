@@ -1,97 +1,87 @@
-use deku::{
-    bitvec::{BitSlice, BitVec, Msb0},
-    prelude::*,
-};
-use enumflags2::{bitflags, BitFlags};
+use deku::prelude::*;
 
-#[bitflags]
-#[repr(u8)]
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
-pub enum InputReportType {
-    Metadata = 1,
-    GamepadReport = 2,
-    ClientMetadata = 8,
-    ServerMetadata = 16,
-    Mouse = 32,
-    Keyboard = 64,
-    Vibration = 128,
+#[allow(non_snake_case)]
+#[derive(Copy, Clone, Default, DekuRead, DekuWrite, Debug, Eq, PartialEq)]
+#[deku(endian = "little")]
+pub struct InputReportType {
+    /// Bitmask: 0x80
+    #[deku(bits = "1")]
+    Vibration: bool,
+    /// Bitmask: 0x40
+    #[deku(bits = "1")]
+    Keyboard: bool,
+    /// Bitmask: 0x20
+    #[deku(bits = "1")]
+    Mouse: bool,
+    /// Bitmask: 0x10
+    #[deku(bits = "1")]
+    ServerMetadata: bool,
+    /// Bitmask: 0x08
+    #[deku(bits = "1")]
+    ClientMetadata: bool,
+    /// Bitmask: 0x04
+    #[deku(bits = "1")]
+    Unused: bool,
+    /// Bitmask: 0x02
+    #[deku(bits = "1")]
+    GamepadReport: bool,
+    /// Bitmask: 0x01
+    #[deku(bits = "1")]
+    Metadata: bool,
 }
 
-/// Wrapper around input report type flags
-#[derive(Debug, Default, Eq, PartialEq)]
-pub struct InputReportTypeFlags(BitFlags<InputReportType>);
-
-impl<'a> DekuRead<'a> for InputReportTypeFlags {
-    fn read(
-        input: &'a BitSlice<Msb0, u8>,
-        _ctx: (),
-    ) -> Result<(&'a BitSlice<Msb0, u8>, Self), DekuError>
-    where
-        Self: Sized,
-    {
-        let (rest, flags) = u8::read(input, ())?;
-        let res = BitFlags::from_bits(flags)
-            .map_err(|_| DekuError::Parse("Failed to read input report type flags".into()))?;
-
-        Ok((rest, InputReportTypeFlags(res)))
-    }
-}
-
-impl DekuWrite for InputReportTypeFlags {
-    fn write(&self, output: &mut BitVec<Msb0, u8>, _ctx: ()) -> Result<(), DekuError> {
-        let byte = self.0.bits_c();
-        output.extend([byte]);
-        Ok(())
-    }
-}
-
-#[bitflags]
-#[repr(u16)]
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
-pub enum GamepadButton {
-    Nexus = 1 << 1,
-    Menu = 1 << 2,
-    View = 1 << 3,
-    A = 1 << 4,
-    B = 1 << 5,
-    X = 1 << 6,
-    Y = 1 << 7,
-    DPadUp = 1 << 8,
-    DPadDown = 1 << 9,
-    DPadLeft = 1 << 10,
-    DPadRight = 1 << 11,
-    LeftShoulder = 1 << 12,
-    RightShoulder = 1 << 13,
-    LeftThumb = 1 << 14,
-    RightThumb = 1 << 15,
-}
-
-/// Wrapper around input report type flags
-#[derive(Debug, Eq, PartialEq)]
-pub struct GamepadButtonFlags(BitFlags<GamepadButton>);
-
-impl<'a> DekuRead<'a> for GamepadButtonFlags {
-    fn read(
-        input: &'a BitSlice<Msb0, u8>,
-        _ctx: (),
-    ) -> Result<(&'a BitSlice<Msb0, u8>, Self), DekuError>
-    where
-        Self: Sized,
-    {
-        let (rest, flags) = u16::read(input, ())?;
-        let res = BitFlags::from_bits(flags)
-            .map_err(|_| DekuError::Parse("Failed to read input report type flags".into()))?;
-
-        Ok((rest, GamepadButtonFlags(res)))
-    }
-}
-
-impl DekuWrite for GamepadButtonFlags {
-    fn write(&self, output: &mut BitVec<Msb0, u8>, _ctx: ()) -> Result<(), DekuError> {
-        // TODO: Verify little endian is correct
-        output.extend(self.0.bits_c().to_le_bytes());
-        Ok(())
-    }
+#[allow(non_snake_case)]
+#[derive(Copy, Clone, DekuRead, DekuWrite, Debug, Eq, PartialEq)]
+#[deku(endian = "little")]
+pub struct GamepadButton {
+    /// Bitmask: 0x8000
+    #[deku(bits = "1")]
+    Unused: bool,
+    /// Bitmask: 0x4000
+    #[deku(bits = "1")]
+    RightThumb: bool,
+    /// Bitmask: 0x2000
+    #[deku(bits = "1")]
+    LeftThumb: bool,
+    /// Bitmask: 0x1000
+    #[deku(bits = "1")]
+    RightShoulder: bool,
+    /// Bitmask: 0x800
+    #[deku(bits = "1")]
+    LeftShoulder: bool,
+    /// Bitmask: 0x400
+    #[deku(bits = "1")]
+    DPadRight: bool,
+    /// Bitmask: 0x200
+    #[deku(bits = "1")]
+    DPadLeft: bool,
+    /// Bitmask: 0x100
+    #[deku(bits = "1")]
+    DPadDown: bool,
+    /// Bitmask: 0x80
+    #[deku(bits = "1")]
+    DPadUp: bool,
+    /// Bitmask: 0x40
+    #[deku(bits = "1")]
+    Y: bool,
+    /// Bitmask: 0x20
+    #[deku(bits = "1")]
+    X: bool,
+    /// Bitmask: 0x10
+    #[deku(bits = "1")]
+    B: bool,
+    /// Bitmask: 0x08
+    #[deku(bits = "1")]
+    A: bool,
+    /// Bitmask: 0x04
+    #[deku(bits = "1")]
+    View: bool,
+    /// Bitmask: 0x02
+    #[deku(bits = "1")]
+    Menu: bool,
+    /// Bitmask: 0x01
+    #[deku(bits = "1")]
+    Nexus: bool,
 }
 
 #[derive(Debug, Eq, PartialEq, DekuRead, DekuWrite)]
@@ -131,7 +121,7 @@ pub struct MetadataReport {
 #[derive(Debug, Eq, PartialEq, DekuRead, DekuWrite)]
 pub struct GamepadData {
     pub gamepad_index: u8,
-    pub button_mask: GamepadButtonFlags,
+    pub button_mask: GamepadButton,
     pub left_thumb_x: i16,
     pub left_thumb_y: i16,
     pub right_thumb_x: i16,
@@ -163,17 +153,17 @@ pub struct SequenceInfo {
 
 #[derive(Debug, PartialEq, DekuRead, DekuWrite)]
 pub struct InputPacket {
-    report_type: InputReportTypeFlags,
-    #[deku(cond = "!report_type.0.contains(InputReportType::Vibration)")]
+    report_type: InputReportType,
+    #[deku(cond = "!report_type.Vibration")]
     // Skip sequence info on vibration packets
     seq_info: Option<SequenceInfo>,
-    #[deku(cond = "report_type.0.contains(InputReportType::Metadata)")]
+    #[deku(cond = "report_type.Metadata")]
     metadata_report: Option<MetadataReport>,
-    #[deku(cond = "report_type.0.contains(InputReportType::GamepadReport)")]
+    #[deku(cond = "report_type.GamepadReport")]
     gamepad_report: Option<GamepadReport>,
-    #[deku(cond = "report_type.0.contains(InputReportType::ClientMetadata)")]
+    #[deku(cond = "report_type.ClientMetadata")]
     client_metadata_report: Option<ClientMetadataReport>,
-    #[deku(cond = "report_type.0.contains(InputReportType::Vibration)")]
+    #[deku(cond = "report_type.Vibration")]
     vibration_report: Option<VibrationReport>,
 }
 
@@ -187,17 +177,17 @@ impl InputPacket {
     ) -> Self {
         let report_type = {
             // Create initial report type with no bits set
-            let mut tmp_type: InputReportTypeFlags = InputReportTypeFlags::default();
+            let mut tmp_type: InputReportType = InputReportType::default();
 
             // Check which data will be contained
             if metadata_report.is_some() {
-                tmp_type.0 |= InputReportType::Metadata;
+                tmp_type.Metadata = true;
             }
             if gamepad_report.is_some() {
-                tmp_type.0 |= InputReportType::GamepadReport;
+                tmp_type.GamepadReport = true;
             }
             if client_metadata_report.is_some() {
-                tmp_type.0 |= InputReportType::ClientMetadata;
+                tmp_type.ClientMetadata = true;
             }
             tmp_type
         };
@@ -218,6 +208,8 @@ impl InputPacket {
 
 #[cfg(test)]
 mod tests {
+    use deku::bitvec::BitSlice;
+
     use super::*;
 
     #[test]
@@ -259,7 +251,7 @@ mod tests {
         assert!(parsed.metadata_report.is_none());
         assert!(parsed.gamepad_report.is_none());
         assert!(parsed.client_metadata_report.is_none());
-        assert!(parsed.report_type.0.contains(InputReportType::Vibration));
+        assert!(parsed.report_type.Vibration);
 
         let vibration_payload = parsed.vibration_report.expect("No vibration payload");
         assert_eq!(vibration_payload.rumble_type, 0x00);
@@ -271,5 +263,45 @@ mod tests {
         assert_eq!(vibration_payload.duration_ms, 0x150);
         assert_eq!(vibration_payload.delay_ms, 0x1FF);
         assert_eq!(vibration_payload.repeat, 0x10);
+    }
+
+    #[test]
+    fn parse_input_report_type() {
+        let data = [0x41u8];
+        let bitslice = BitSlice::from_slice(&data).expect("Failed to create bitslice");
+        let (rest, parsed) =
+            InputReportType::read(bitslice, ()).expect("Failed to parse input report type");
+
+        assert!(rest.is_empty());
+
+        assert!(parsed.Keyboard);
+        assert!(parsed.Metadata);
+        assert!(!parsed.GamepadReport);
+        assert!(!parsed.ClientMetadata);
+        assert!(!parsed.Vibration);
+        assert!(!parsed.Mouse);
+    }
+
+    #[test]
+    fn parse_gamepad_button() {
+        // A, DPadRight, LeftThumb
+        let data = [0x24, 0x08u8];
+
+        let bitslice = BitSlice::from_slice(&data).expect("Failed to create bitslice");
+        let (rest, parsed) =
+            GamepadButton::read(bitslice, ()).expect("Failed to parse gamepad button flags");
+
+        assert!(rest.is_empty());
+
+        println!("{:?}", parsed);
+
+        assert!(parsed.A);
+        assert!(parsed.DPadRight);
+        assert!(parsed.LeftThumb);
+        assert!(!parsed.RightThumb);
+        assert!(!parsed.B);
+        assert!(!parsed.X);
+        assert!(!parsed.Y);
+        assert!(!parsed.DPadLeft);
     }
 }
