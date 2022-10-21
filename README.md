@@ -36,10 +36,10 @@ Note: Requires tokens (see above)
 cargo run --example gssv-api
 ```
 
-### Test gamestreaming session init
+### Test client
 
 Note: Requires tokens (see above)
 
 ```text
-cargo run --example webrtc-client
+cargo run --bin client_webrtc
 ```
