@@ -50,9 +50,7 @@ impl GssvChannel for InputChannel {
                 println!("[{}] Received packet: {:?}", Self::name(), input_packet);
                 todo!("Handle input packet")
             }
-            val => {
-                Err(format!("[{}] Unhandled message type: {:?}", Self::name(), val).into())
-            }
+            val => Err(format!("[{}] Unhandled message type: {:?}", Self::name(), val).into()),
         }
     }
 

@@ -1,5 +1,3 @@
-use enumflags2::{BitFlag, FromBitsError};
-
 use thiserror::Error;
 
 use crate::api::GssvApiError;
@@ -8,15 +6,6 @@ use crate::api::GssvApiError;
 pub enum PacketError {
     #[error("Unknown error")]
     Unknown,
-}
-
-#[derive(Error, Debug)]
-pub enum FlagsError<T>
-where
-    T: BitFlag,
-{
-    #[error(transparent)]
-    DeserializeError(#[from] FromBitsError<T>),
 }
 
 #[derive(Error, Debug)]
