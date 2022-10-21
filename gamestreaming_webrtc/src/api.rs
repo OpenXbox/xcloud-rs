@@ -440,7 +440,6 @@ struct SdpConfiguration {
 #[serde(rename_all = "camelCase")]
 struct GssvSdpOffer {
     message_type: String,
-    // TODO: Create SDP model
     sdp: String,
     configuration: SdpConfiguration,
 }
