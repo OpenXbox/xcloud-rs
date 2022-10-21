@@ -7,11 +7,12 @@ use std::str::FromStr;
 
 use chrono::{Duration, Utc};
 
-use api::{
-    ConsolesResponse, IceExchangeResponse, SdpExchangeResponse, SessionResponse, TitleResult, IceCandidate,
-};
 use crate::api::GssvApi;
 use crate::error::GsError;
+use api::{
+    ConsolesResponse, IceCandidate, IceExchangeResponse, SdpExchangeResponse, SessionResponse,
+    TitleResult,
+};
 
 #[derive(Debug, Eq, PartialEq)]
 pub enum Platform {
