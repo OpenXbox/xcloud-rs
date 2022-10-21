@@ -62,6 +62,7 @@ async fn continue_auth(
     println!("Transfer token={:?}", transfer_token);
 
     let ts = TokenStore {
+        client_params: xal.client_params(),
         //wl_token,
         sisu_tokens: auth_response,
         gssv_token,

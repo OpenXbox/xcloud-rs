@@ -1,9 +1,5 @@
-use std::time::Duration;
-
-use crate::models::response::WindowsLiveTokenResponse;
-
 use super::{
-    app_params, models,
+    app_params::{DeviceType, XalClientParameters},
     models::request,
     models::response,
     request_signer::{self, SigningReqwestBuilder},
@@ -21,13 +17,14 @@ use oauth2::{
     RefreshToken, Scope, StandardRevocableToken, TokenResponse, TokenType, TokenUrl,
 };
 use reqwest;
+use std::time::Duration;
 use url::Url;
 use uuid;
 
 type Error = Box<dyn std::error::Error>;
 type Result<T> = std::result::Result<T, Error>;
 
-pub type SpecialTokenResponse = WindowsLiveTokenResponse<EmptyExtraTokenFields>;
+pub type SpecialTokenResponse = response::WindowsLiveTokenResponse<EmptyExtraTokenFields>;
 type SpecialClient = OAuthClient<
     BasicErrorResponse,
     SpecialTokenResponse,
@@ -37,7 +34,7 @@ type SpecialClient = OAuthClient<
     BasicRevocationErrorResponse,
 >;
 
-impl<EF> TokenResponse<BasicTokenType> for WindowsLiveTokenResponse<EF>
+impl<EF> TokenResponse<BasicTokenType> for response::WindowsLiveTokenResponse<EF>
 where
     EF: ExtraTokenFields,
     BasicTokenType: TokenType,
@@ -92,7 +89,7 @@ where
 #[derive(Debug)]
 pub struct XalAuthenticator {
     device_id: uuid::Uuid,
-    client_params: models::XalClientParameters,
+    client_params: XalClientParameters,
     ms_cv: cvlib::CorrelationVector,
     client: reqwest::Client,
     client2: SpecialClient,
@@ -101,8 +98,8 @@ pub struct XalAuthenticator {
 
 impl Default for XalAuthenticator {
     fn default() -> Self {
-        let app_params = app_params::ANDROID_GAMEPASS_BETA_PARAMS;
-        let client_id = ClientId::new(app_params.app_id.to_owned());
+        let app_params = XalClientParameters::default();
+        let client_id = ClientId::new(app_params.app_id.clone());
         let client_secret = None;
 
         let auth_url = AuthUrl::new("https://login.live.com/oauth20_authorize.srf".into())
@@ -110,7 +107,7 @@ impl Default for XalAuthenticator {
         let token_url = TokenUrl::new("https://login.live.com/oauth20_token.srf".into())
             .expect("Invalid token endpoint URL");
         let redirect_url =
-            RedirectUrl::new(app_params.redirect_uri.into()).expect("Invalid redirect URL");
+            RedirectUrl::new(app_params.redirect_uri.clone()).expect("Invalid redirect URL");
 
         let client2 = OAuthClient::new(client_id, client_secret, auth_url, Some(token_url))
             .set_auth_type(AuthType::RequestBody)
@@ -140,6 +137,10 @@ impl XalAuthenticator {
 }
 
 impl XalAuthenticator {
+    pub fn client_params(&self) -> XalClientParameters {
+        self.client_params.clone()
+    }
+
     pub fn get_redirect_uri(&self) -> Url {
         self.client2.redirect_url().unwrap().url().to_owned()
     }
@@ -171,7 +172,7 @@ impl XalAuthenticator {
         refresh_token: &RefreshToken,
     ) -> Result<response::XCloudTokenResponse> {
         let form_body = request::WindowsLiveTokenRequest {
-            client_id: self.client_params.app_id,
+            client_id: &self.client_params.app_id.clone(),
             grant_type: "refresh_token",
             scope:
                 "service::http://Passport.NET/purpose::PURPOSE_XBOX_CLOUD_CONSOLE_TRANSFER_TOKEN",
@@ -227,7 +228,7 @@ impl XalAuthenticator {
     pub async fn get_device_token(&mut self) -> Result<response::XADResponse> {
         let client_uuid: String = match self.client_params.device_type {
             // {decf45e4-945d-4379-b708-d4ee92c12d99}
-            models::DeviceType::ANDROID => [
+            DeviceType::ANDROID => [
                 "{".to_string(),
                 self.device_id.hyphenated().to_string(),
                 "}".to_string(),
@@ -235,7 +236,7 @@ impl XalAuthenticator {
             .concat(),
 
             // DECF45E4-945D-4379-B708-D4EE92C12D99
-            models::DeviceType::IOS => self.device_id.hyphenated().to_string().to_uppercase(),
+            DeviceType::IOS => self.device_id.hyphenated().to_string().to_uppercase(),
             // Unknown
             _ => self.device_id.hyphenated().to_string(),
         };
@@ -250,8 +251,8 @@ impl XalAuthenticator {
             properties: request::XADProperties {
                 auth_method: "ProofOfPossession",
                 id: client_uuid.as_str(),
-                device_type: self.client_params.device_type.into(),
-                version: self.client_params.client_version,
+                device_type: &self.client_params.device_type.to_string(),
+                version: &self.client_params.client_version,
                 proof_key: self.request_signer.get_proof_key(),
             },
         };
@@ -283,15 +284,15 @@ impl XalAuthenticator {
         headers.insert("MS-CV", self.next_cv().parse()?);
 
         let json_body = request::SisuAuthenticationRequest {
-            app_id: self.client_params.app_id,
-            title_id: self.client_params.title_id,
-            redirect_uri: self.client_params.redirect_uri,
+            app_id: &self.client_params.app_id,
+            title_id: &self.client_params.title_id,
+            redirect_uri: &self.client_params.redirect_uri,
             device_token,
             sandbox: "RETAIL",
             token_type: "code",
             offers: vec!["service::user.auth.xboxlive.com::MBI_SSL"],
             query: request::SisuQuery {
-                display: self.client_params.query_display,
+                display: &self.client_params.query_display,
                 code_challenge: code_challenge.as_str(),
                 code_challenge_method: code_challenge.method(),
                 state,
@@ -327,7 +328,7 @@ impl XalAuthenticator {
     ) -> Result<response::SisuAuthorizationResponse> {
         let json_body = request::SisuAuthorizationRequest {
             access_token: &format!("t={}", access_token),
-            app_id: self.client_params.app_id,
+            app_id: &self.client_params.app_id.clone(),
             device_token,
             sandbox: "RETAIL",
             site_name: "user.auth.xboxlive.com",

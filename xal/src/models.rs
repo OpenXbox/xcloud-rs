@@ -1,56 +1,11 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::convert::From;
-
-#[derive(Debug, Serialize, Deserialize, Copy, Clone)]
-pub enum DeviceType {
-    UNKNOWN,
-    IOS,
-    ANDROID,
-    WIN32,
-}
-
-impl From<&str> for DeviceType {
-    fn from(s: &str) -> Self {
-        match s.to_lowercase().as_ref() {
-            "android" => DeviceType::ANDROID,
-            "ios" => DeviceType::IOS,
-            "win32" => DeviceType::WIN32,
-            _ => DeviceType::UNKNOWN,
-        }
-    }
-}
-
-#[allow(clippy::from_over_into)]
-impl<'a> Into<&'a str> for DeviceType {
-    fn into(self) -> &'a str {
-        match self {
-            DeviceType::ANDROID => "Android",
-            DeviceType::IOS => "iOS",
-            DeviceType::WIN32 => "Win32",
-            DeviceType::UNKNOWN => {
-                panic!("DeviceType::UNKNOWN should nevert be constructed")
-            }
-        }
-    }
-}
 
 #[derive(Debug, Serialize, Deserialize, Copy, Clone, PartialEq, Eq)]
 pub enum SigningAlgorithm {
     ES256,
     ES384,
     ES521,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct XalClientParameters {
-    pub user_agent: &'static str,
-    pub app_id: &'static str,
-    pub device_type: DeviceType,
-    pub client_version: &'static str,
-    pub title_id: &'static str,
-    pub redirect_uri: &'static str,
-    pub query_display: &'static str,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -320,7 +275,7 @@ pub mod response {
 
 #[cfg(test)]
 mod test {
-    use super::{response, DeviceType, SigningAlgorithm, SigningPolicy};
+    use super::{response, SigningAlgorithm, SigningPolicy};
     use serde_json;
 
     #[test]
@@ -379,11 +334,5 @@ mod test {
             deserialized.supported_algorithms,
             vec![SigningAlgorithm::ES521]
         )
-    }
-
-    #[test]
-    fn devicetype_enum_into() {
-        let str_enum: &str = DeviceType::WIN32.into();
-        assert_eq!(str_enum, "Win32");
     }
 }
