@@ -16,13 +16,6 @@ chrono = "0.4.22"
 
 [dev-dependencies]
 xal = { path = "../xal" }
-webrtc = "0.5.1"
-lazy_static = "1.4"
-anyhow = "1.0"
-
-[[example]]
-name = "webrtc-client"
-path = "examples/client.rs"
 
 [[example]]
 name = "gssv-api"
