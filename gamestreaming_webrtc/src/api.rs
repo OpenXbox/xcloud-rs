@@ -1,6 +1,7 @@
 use reqwest::{header, header::HeaderMap, Client, ClientBuilder, StatusCode, Url};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use serde_json;
+use serde_aux::prelude::*;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -450,6 +451,7 @@ pub struct IceCandidate {
     pub candidate: String,
     pub sdp_mid: Option<String>,
     #[serde(rename = "sdpMLineIndex")]
+    #[serde(deserialize_with = "deserialize_option_number_from_string")]
     pub sdp_mline_index: Option<u16>,
     pub username_fragment: Option<String>,
 }
