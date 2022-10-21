@@ -2,17 +2,14 @@ pub mod api;
 mod channels;
 pub mod error;
 mod packets;
-mod sdp;
 mod serde_helpers;
 use std::str::FromStr;
 
 use chrono::{Duration, Utc};
 
 use api::{
-    ConsolesResponse, IceExchangeResponse, SdpExchangeResponse, SessionResponse, TitleResult,
+    ConsolesResponse, IceExchangeResponse, SdpExchangeResponse, SessionResponse, TitleResult, IceCandidate,
 };
-use webrtc::ice_transport::ice_candidate::RTCIceCandidateInit;
-
 use crate::api::GssvApi;
 use crate::error::GsError;
 
@@ -213,7 +210,7 @@ impl GamestreamingClient {
     pub async fn exchange_ice(
         &self,
         session: &SessionResponse,
-        ice_candidate_init: Vec<RTCIceCandidateInit>,
+        ice_candidate_init: Vec<IceCandidate>,
     ) -> Result<IceExchangeResponse, GsError> {
         self.api
             .set_ice(session, ice_candidate_init)
