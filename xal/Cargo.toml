@@ -26,10 +26,21 @@ ecdsa = "0.14.8"
 signature = "1.6.4"
 oauth2 = "4.2.3"
 
-[dev-dependencies]
-tokio = { version = "1", features = ["full"] }
+# common for bins
+tokio = { version = "1", features = ["full"], optional = true }
+
+# auth_webview
+tauri = { version = "1.1.1", optional = true }
+wry = { version = "0.21.1", optional = true }
+
+[features]
+webview = ["dep:tauri", "dep:wry", "dep:tokio"]
 
 [[example]]
 name = "sisu-auth"
 path = "examples/sisu_auth.rs"
 bench = false
+
+[[bin]]         
+name = "auth_webview"
+required-features = ["webview"]

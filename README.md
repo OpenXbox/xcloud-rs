@@ -19,7 +19,7 @@ cargo doc
 Graphical / via WebView
 
 ```text
-cargo run --bin auth_webview
+cargo run --bin auth_webview --features=webview
 ```
 
 CLI / Manually copying rdirect URI
