@@ -49,8 +49,12 @@ pub struct UnknownInputFramev3Data(u32, u32, u32);
 #[derive(Debug, Clone, DekuRead, DekuWrite, PartialEq, Eq)]
 pub struct FrameV3Data {
     pub input_count: u32,
+    // FIXME
+    // Before: pub unknown: Option<Vec<UnknownInputFramev3Data>>, // length: input_count
+    // Converted to the type below to pass parsing
+    // -> Condition on which this unknown data gets parsed is unknown atm
     #[deku(count = "input_count")]
-    pub unknown: Option<Vec<UnknownInputFramev3Data>>, // length: input_count
+    pub unknown: Vec<UnknownInputFramev3Data>,
     pub data_mouse: Option<MouseData>,
     pub data_gamepad: Option<GamepadData>,
     pub data_keyboard: Option<KeyboardData>,
