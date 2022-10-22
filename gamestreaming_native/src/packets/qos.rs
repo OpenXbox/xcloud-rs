@@ -12,12 +12,11 @@ pub enum QosPacketType {
 }
 
 #[derive(Debug, Clone, DekuRead, DekuWrite, Eq, PartialEq, Default)]
-pub struct QosControlFlags{
+pub struct QosControlFlags {
     // Bit 1 / Mask 0x01
-    #[deku(pad_bits_before="7", bits="1")]
+    #[deku(pad_bits_before = "7", bits = "1")]
     pub reinitialize: bool,
 }
-
 
 #[derive(Debug, Clone, DekuRead, DekuWrite, PartialEq, Eq)]
 pub struct QosServerPolicy {
@@ -94,9 +93,7 @@ mod tests {
     #[test]
     fn serialize_qos_control_flags() {
         fn get_value(flags: QosControlFlags) -> u8 {
-            let val = flags
-                .to_bytes()
-                .expect("Failed to convert to bytes");
+            let val = flags.to_bytes().expect("Failed to convert to bytes");
             assert_eq!(val.len(), 1);
             val[0]
         }

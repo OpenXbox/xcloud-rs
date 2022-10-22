@@ -5,19 +5,15 @@ mod mux_dct_channel;
 mod mux_dct_control;
 mod ping;
 mod qos;
-pub mod serializing;
 mod udp_connection_probing;
 pub mod video;
 
-use hexdump;
-use std::convert::{From, Into};
-use std::io::Cursor;
 use deku::prelude::*;
+use hexdump;
 
 use webrtc::rtp;
 
-use mux_dct_control::MuxDCTControlPacket;
-use serializing::Deserialize;
+use mux_dct_control::MuxDCTControlHeader;
 use udp_connection_probing::ConnectionProbingPacket;
 
 #[derive(Debug, Clone, DekuRead, DekuWrite, PartialEq, Eq)]
@@ -37,14 +33,6 @@ pub enum PayloadType {
     MockUDPDctCtrl = 0x7f,
 }
 
-impl From<u8> for PayloadType {
-    fn from(value: u8) -> Self {
-        let z: PayloadType = unsafe { ::std::mem::transmute(value) };
-
-        z
-    }
-}
-
 #[derive(Debug, Clone, DekuRead, DekuWrite, PartialEq, Eq)]
 #[deku(type = "u8")]
 pub enum ControlProtocolMessageOpCode {
@@ -55,17 +43,9 @@ pub enum ControlProtocolMessageOpCode {
     Config2 = 0x6,
 }
 
-impl From<u8> for ControlProtocolMessageOpCode {
-    fn from(value: u8) -> Self {
-        let z: ControlProtocolMessageOpCode = unsafe { ::std::mem::transmute(value) };
-
-        z
-    }
-}
-
 pub fn parse_rtp_packet(packet: &rtp::packet::Packet) {
-    let payload_type: PayloadType = packet.header.payload_type.into();
-    let mut reader = Cursor::new(&packet.payload);
+    let (_, payload_type) = PayloadType::from_bytes((&packet.payload[..1], 0))
+        .expect("Failed to parse PayloadType");
 
     match payload_type {
         /*
@@ -88,7 +68,7 @@ pub fn parse_rtp_packet(packet: &rtp::packet::Packet) {
                 packet.header.ssrc
             );
             hexdump::hexdump(&packet.payload);
-            let packet = MuxDCTControlPacket::deserialize(&mut reader)
+            let (_, packet) = MuxDCTControlHeader::from_bytes((&packet.payload[1..], 0))
                 .expect("Failed to parse MuxDCTControlPacket");
             println!("{:?}", packet);
         }
@@ -105,23 +85,10 @@ pub fn parse_rtp_packet(packet: &rtp::packet::Packet) {
         },
         */
         PayloadType::UDPConnectionProbing => {
-            let packet = ConnectionProbingPacket::deserialize(&mut reader)
+            let (_, packet) = ConnectionProbingPacket::from_bytes((&packet.payload[1..], 0))
                 .expect("Failed to parse UDPConnectionProbingPacket");
 
-            match packet {
-                ConnectionProbingPacket::Syn(pdata) => {
-                    println!(
-                        "ConnectionProbingPacket::Syn(DataLen={})",
-                        pdata.probe_data.len()
-                    );
-                }
-                ConnectionProbingPacket::Ack(pdata) => {
-                    println!(
-                        "ConnectionProbingPacket::Ack(AcceptedSize={}, Appendix={})",
-                        pdata.accepted_packet_size, pdata.appendix
-                    );
-                }
-            }
+            println!("{:?}", packet);
         }
         /*
         PayloadType::URCPDummyPacket => {
