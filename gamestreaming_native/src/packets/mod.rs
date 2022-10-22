@@ -12,6 +12,7 @@ pub mod video;
 use hexdump;
 use std::convert::{From, Into};
 use std::io::Cursor;
+use deku::prelude::*;
 
 use webrtc::rtp;
 
@@ -19,8 +20,8 @@ use mux_dct_control::MuxDCTControlPacket;
 use serializing::Deserialize;
 use udp_connection_probing::ConnectionProbingPacket;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-#[repr(u8)]
+#[derive(Debug, Clone, DekuRead, DekuWrite, PartialEq, Eq)]
+#[deku(type = "u8")]
 pub enum PayloadType {
     Unknown = 0x0,
     MuxDCTChannelRangeDefault = 0x23,
@@ -44,8 +45,8 @@ impl From<u8> for PayloadType {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-#[repr(u8)]
+#[derive(Debug, Clone, DekuRead, DekuWrite, PartialEq, Eq)]
+#[deku(type = "u8")]
 pub enum ControlProtocolMessageOpCode {
     Auth = 0x1,
     AuthComplete = 0x2,
