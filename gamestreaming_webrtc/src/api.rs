@@ -64,6 +64,7 @@ impl GssvApi {
             .send()
             .await
             .map_err(GssvApiError::HttpError)?
+            .error_for_status()?
             .json::<LoginResponse>()
             .await
             .map_err(GssvApiError::HttpError)
@@ -111,6 +112,7 @@ impl GssvApi {
         req.send()
             .await
             .map_err(GssvApiError::HttpError)?
+            .error_for_status()?
             .json::<T>()
             .await
             .map_err(GssvApiError::HttpError)
@@ -136,6 +138,7 @@ impl GssvApi {
             .send()
             .await
             .map_err(GssvApiError::HttpError)?
+            .error_for_status()?
             .json::<RS>()
             .await
             .map_err(GssvApiError::HttpError)
@@ -354,6 +357,7 @@ impl GssvApi {
             .send()
             .await
             .map_err(GssvApiError::HttpError)?
+            .error_for_status()?
             .json::<KeepaliveResponse>()
             .await
             .map_err(GssvApiError::HttpError)
