@@ -1,19 +1,21 @@
-use byteorder::*;
-use std::io::{Read, Seek};
-
-use crate::{crypto::OneShotHasher, packets::serializing::Deserialize};
-
+use crate::crypto::OneShotHasher;
+use deku::prelude::*;
 use hmac::Hmac;
 use sha2::Sha256;
 
-type Error = Box<dyn std::error::Error>;
-type Result<T> = std::result::Result<T, Error>;
+#[derive(Debug, Clone, DekuRead, DekuWrite, PartialEq, Eq)]
+#[deku(type = "u8")]
+pub enum PingFlag {
+    Request = 0x00,
+    Response = 0xFF,
+}
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, DekuRead, DekuWrite, PartialEq, Eq)]
 pub struct PingPayload {
     pub ping_type: u8,
-    pub flags: u8,
+    pub flags: PingFlag,
     pub sequence_num: u32,
+    #[deku(bytes_read = "32")]
     pub signature: Vec<u8>,
 }
 
@@ -21,7 +23,7 @@ impl PingPayload {
     fn new_request(sequence: u32, signing_context: &mut Hmac<Sha256>) -> Self {
         Self {
             ping_type: 0x01,
-            flags: 0x00,
+            flags: PingFlag::Request,
             sequence_num: sequence,
             signature: signing_context
                 .hash_oneshot(&sequence.to_le_bytes())
@@ -32,7 +34,7 @@ impl PingPayload {
     fn new_ack(sequence: u32, signing_context: &mut Hmac<Sha256>) -> Self {
         Self {
             ping_type: 0x01,
-            flags: 0xFF,
+            flags: PingFlag::Response,
             sequence_num: sequence,
             signature: signing_context
                 .hash_oneshot(&sequence.to_le_bytes())
@@ -52,48 +54,11 @@ impl PingPayload {
      */
 }
 
-impl Deserialize for PingPayload {
-    fn deserialize<T: Read + Seek>(reader: &mut T) -> Result<Self> {
-        let mut signature = vec![0; 0x20];
-
-        let ping_type = reader.read_u8()?;
-        let flags = reader.read_u8()?;
-        let sequence_num = reader.read_u32::<LittleEndian>()?;
-        reader.read_exact(&mut signature)?;
-
-        Ok(Self {
-            ping_type,
-            flags,
-            sequence_num,
-            signature,
-        })
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum PingPacket {
-    Request(PingPayload),
-    Response(PingPayload),
-}
-
-impl Deserialize for PingPacket {
-    fn deserialize<T: Read + Seek>(reader: &mut T) -> Result<Self> {
-        let body = PingPayload::deserialize(reader)?;
-
-        match body.flags {
-            0x00 => Ok(PingPacket::Request(body)),
-            0xFF => Ok(PingPacket::Response(body)),
-            _ => Err(format!("PingBody with unhandled flags: {:?}", body.flags))?,
-        }
-    }
-}
-
 #[cfg(test)]
 mod test {
     use super::*;
     use crate::crypto::MsSrtpCryptoContext;
     use hex;
-    use std::io::Cursor;
 
     #[test]
     fn deserialize_ping_packet() {
@@ -111,29 +76,16 @@ mod test {
             .expect("Failed to get ping signing context");
 
         // Udp payload + 2 is ping packet/payload
-        let mut reader = Cursor::new(&packet_data[2..]);
-        let packet =
-            PingPacket::deserialize(&mut reader).expect("Failed to deserialize Ping packet");
+        let (rest, packet) = PingPayload::from_bytes((&packet_data[2..], 0))
+            .expect("Failed to deserialize Ping packet");
 
-        match packet {
-            PingPacket::Request(request) => {
-                assert_eq!(request.ping_type, 0x01);
-                assert_eq!(request.flags, 0x00);
-                assert_eq!(request.sequence_num, 0x0);
-                assert_eq!(
-                    &hex::encode(&request.signature),
-                    "d0c87bfa07d4e7fc9909d96e3cb3977d5232bbb391932236d56411f82d103bd5"
-                );
-
-                /*
-                request.is_signature_valid(ping_signing_ctx.clone())
-                    .expect("Test Signature verification failed");
-                 */
-            }
-            _ => {
-                panic!("Deserialized into invalid ping packet")
-            }
-        }
+        assert_eq!(packet.ping_type, 0x01);
+        assert_eq!(packet.flags, PingFlag::Request);
+        assert_eq!(packet.sequence_num, 0x0);
+        assert_eq!(
+            &hex::encode(&packet.signature),
+            "d0c87bfa07d4e7fc9909d96e3cb3977d5232bbb391932236d56411f82d103bd5"
+        );
     }
 
     #[test]
