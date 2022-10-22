@@ -39,8 +39,11 @@ pub struct AudioControlFlags {
     stop_stream: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct AudioDataFlags {}
+#[derive(Debug, Clone, DekuRead, DekuWrite, PartialEq, Eq)]
+pub struct AudioDataFlags {
+    // TODO: Found out what these are
+    pub unknown: u32,
+}
 
 #[derive(Debug, Clone, DekuRead, DekuWrite, PartialEq, Eq)]
 pub struct PCMAudioFormat {
@@ -80,7 +83,7 @@ pub struct AudioControl {
 
 #[derive(Debug, Clone, DekuRead, DekuWrite, PartialEq, Eq)]
 pub struct AudioData {
-    pub flags: u32,
+    pub flags: AudioDataFlags,
     pub frame_id: u32,
     pub timestamp: u64,
     #[deku(update = "self.data.len()")]
@@ -106,12 +109,8 @@ mod tests {
     #[test]
     fn parse_audio_control_flags() {
         fn create_flag(val: [u8; 4]) -> AudioControlFlags {
-            let (rest, flags) =
+            let (_, flags) =
                 AudioControlFlags::from_bytes((&val, 0)).expect("Failed to create flags");
-
-            // Ensure all bits were processed
-            assert!(rest.0.is_empty());
-            assert_eq!(rest.1, 0);
 
             flags
         }

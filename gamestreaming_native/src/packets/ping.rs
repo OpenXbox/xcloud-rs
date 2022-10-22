@@ -76,7 +76,7 @@ mod test {
             .expect("Failed to get ping signing context");
 
         // Udp payload + 2 is ping packet/payload
-        let (rest, packet) = PingPayload::from_bytes((&packet_data[2..], 0))
+        let (_, packet) = PingPayload::from_bytes((&packet_data[2..], 0))
             .expect("Failed to deserialize Ping packet");
 
         assert_eq!(packet.ping_type, 0x01);
