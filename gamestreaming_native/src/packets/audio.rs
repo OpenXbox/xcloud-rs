@@ -23,19 +23,19 @@ pub enum AudioCodec {
 #[derive(Debug, Clone, DekuRead, DekuWrite, Eq, PartialEq, Default)]
 pub struct AudioControlFlags {
     /// Reinit audio stream
-    /// Bit 30 / Mask 0x40000000
+    /// Bit 30 / Mask LE 0x40000000 BE 0x40
     #[deku(pad_bits_before = "1", bits = "1")]
     reinitialize: bool,
 
     /// Start audio stream
-    /// Bit 28 / Mask 0x10000000
+    /// Bit 28 / Mask LE 0x10000000 BE 0x10
     #[deku(pad_bits_before = "1", bits = "1")]
     start_stream: bool,
 
     /// Stop audio stream
-    /// Bit 27 / Mask 0x08000000
+    /// Bit 27 / Mask LE 0x08000000 BE 0x08
     // Pad to end of 32 bits
-    #[deku(pad_bits_after = "3", pad_bytes_after = "3", bits = "1")]
+    #[deku(pad_bits_after = "26", bits = "1")]
     stop_stream: bool,
 }
 
