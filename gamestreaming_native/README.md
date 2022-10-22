@@ -5,7 +5,7 @@
 To simply decrypt communication and print to terminal:
 
 ```sh
-$ cargo run --bin pcap_parser -- --srtp-key <SRTP KEY BASE64> <PATH TO PCAP>
+$ cargo run --bin pcap_parser --features=pcap -- --srtp-key <SRTP KEY BASE64> <PATH TO PCAP>
 Using SRTP key: Some("<SRTP KEY>")
 PCAP Decrypt path: None
 STUN Packet: Binding request l=76 attrs=4 id=hvRAX7bbtFhz4GZP
@@ -53,7 +53,7 @@ RTP: MuxDCTControl Seq: 5, ts: 0, ssrc: 1024
 To decrypt into new PCAP file
 
 ```sh
-$ cargo run --bin pcap_parser -- --srtp-key <SRTP KEY BASE64> --decrypt-pcap <TARGET PLAINTEXT PCAP> <PATH TO PCAP>
+$ cargo run --bin pcap_parser --features=pcap -- --srtp-key <SRTP KEY BASE64> --decrypt-pcap <TARGET PLAINTEXT PCAP> <PATH TO PCAP>
 Using SRTP key: Some("<SRTP KEY>")
 PCAP Decrypt path: Some("plaintext.pcap")
 STUN Packet: Binding request l=76 attrs=4 id=hvRAX7bbtFhz4GZP
