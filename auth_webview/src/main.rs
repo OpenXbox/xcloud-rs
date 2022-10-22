@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-License-Identifier: MIT
 
+use chrono::Utc;
 use tauri::async_runtime;
 use wry::{
     application::{
@@ -68,6 +69,7 @@ async fn continue_auth(
         sisu_tokens: auth_response,
         gssv_token,
         xcloud_transfer_token: transfer_token,
+        updated: Utc::now(),
     };
     ts.save(TOKENS_FILEPATH)
 }
@@ -87,6 +89,7 @@ fn main() -> wry::Result<()> {
 
         println!("{:?}", refreshed_xcoud);
         ts.xcloud_transfer_token = refreshed_xcoud;
+        ts.updated = Utc::now();
         ts.save(TOKENS_FILEPATH)
             .expect("Failed to save refreshed XCloud token");
 

@@ -1,3 +1,4 @@
+use chrono::Utc;
 use std::io;
 use url::Url;
 use xal::authenticator::XalAuthenticator;
@@ -17,6 +18,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("{:?}", refreshed_xcoud);
 
         ts.xcloud_transfer_token = refreshed_xcoud;
+        ts.updated = Utc::now();
         ts.save(TOKENS_FILEPATH)?;
 
         return Ok(());
@@ -132,6 +134,7 @@ When finished, paste the Redirect URL and hit [ENTER]"#,
             sisu_tokens: auth_response,
             gssv_token,
             xcloud_transfer_token: transfer_token,
+            updated: Utc::now(),
         };
         ts.save(TOKENS_FILEPATH)?
     } else {

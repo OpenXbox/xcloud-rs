@@ -1,3 +1,4 @@
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::fs;
 
@@ -14,6 +15,7 @@ pub struct TokenStore {
     pub sisu_tokens: SisuAuthorizationResponse,
     pub gssv_token: XSTSResponse,
     pub xcloud_transfer_token: XCloudTokenResponse,
+    pub updated: DateTime<Utc>,
 }
 
 impl TokenStore {
