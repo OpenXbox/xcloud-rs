@@ -19,13 +19,13 @@ cargo doc
 Graphical / via WebView
 
 ```text
-cargo run --bin auth_webview --features=webview
+cargo run --bin auth-webview --features=webview
 ```
 
 CLI / Manually copying rdirect URI
 
 ```text
-cargo run --example sisu-auth
+cargo run --bin auth-cli --features=tokio
 ```
 
 ### Test Gssv Api
@@ -41,5 +41,5 @@ cargo run --example gssv-api
 Note: Requires tokens (see above)
 
 ```text
-cargo run --bin client_webrtc --features="xal webrtc-rs"
+cargo run --bin client-webrtc --features="xal webrtc-rs"
 ```

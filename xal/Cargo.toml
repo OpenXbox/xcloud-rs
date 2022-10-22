@@ -34,13 +34,13 @@ tauri = { version = "1.1.1", optional = true }
 wry = { version = "0.21.1", optional = true }
 
 [features]
-webview = ["dep:tauri", "dep:wry", "dep:tokio"]
+webview = ["dep:tauri", "dep:wry"]
+tokio = ["dep:tokio"]
 
-[[example]]
-name = "sisu-auth"
-path = "examples/sisu_auth.rs"
-bench = false
+[[bin]]
+name = "auth-cli"
+required-features = ["tokio"]
 
 [[bin]]         
-name = "auth_webview"
+name = "auth-webview"
 required-features = ["webview"]

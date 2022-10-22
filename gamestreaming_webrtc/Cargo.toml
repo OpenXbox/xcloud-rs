@@ -32,7 +32,6 @@ xal = ["dep:xal"]
 
 [[example]]
 name = "gssv-api"
-path = "examples/gssv_api.rs"
 
 [[bin]]
 name = "client-webrtc"
