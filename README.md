@@ -41,5 +41,5 @@ cargo run --example gssv-api
 Note: Requires tokens (see above)
 
 ```text
-cargo run --bin client_webrtc
+cargo run --bin client_webrtc --features="xal webrtc-rs"
 ```

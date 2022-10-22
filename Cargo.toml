@@ -1,2 +1,8 @@
 [workspace]
-members = ["xal", "smartglass", "gamestreaming_native", "gamestreaming_webrtc", "teredo", "client_webrtc"]
+members = [
+    "xal",
+    "smartglass",
+    "gamestreaming_native",
+    "gamestreaming_webrtc",
+    "teredo"
+    ]

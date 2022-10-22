@@ -15,9 +15,25 @@ thiserror = "1.0.37"
 chrono = "0.4.22"
 serde-aux = "4.0.0"
 
+# common for bins
+xal = { path = "../xal", optional = true }
+
+# webrtc-rs client
+webrtc = { version = "0.5.1", optional = true }
+lazy_static = { version = "1.4", optional = true }
+anyhow = { version = "1.0", optional = true }
+
 [dev-dependencies]
-xal = { path = "../xal" }
+xal = { path = "../xal"}
+
+[features]
+webrtc-rs = ["dep:webrtc", "dep:lazy_static", "dep:anyhow"]
+xal = ["dep:xal"]
 
 [[example]]
 name = "gssv-api"
 path = "examples/gssv_api.rs"
+
+[[bin]]
+name = "client-webrtc"
+required-features = ["xal", "webrtc-rs"]
