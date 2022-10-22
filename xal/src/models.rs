@@ -207,7 +207,7 @@ pub mod response {
         pub use_modern_gamertag: Option<bool>,
     }
 
-    #[derive(Debug, Serialize, Deserialize)]
+    #[derive(Debug, Serialize, Deserialize, Clone)]
     pub struct WindowsLiveTokenResponse<EF: ExtraTokenFields> {
         pub token_type: Option<BasicTokenType>,
         #[serde(skip_serializing_if = "Option::is_none")]

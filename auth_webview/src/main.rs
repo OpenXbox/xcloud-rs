@@ -29,6 +29,7 @@ async fn continue_auth(
         .exchange_code_for_token(authorization_code, local_code_verifier)
         .await
         .expect("Failed exchanging code for token");
+    let wl_token_clone = wl_token.clone();
     println!("WL={:?}", wl_token);
 
     let auth_response = xal
@@ -63,7 +64,7 @@ async fn continue_auth(
 
     let ts = TokenStore {
         client_params: xal.client_params(),
-        //wl_token,
+        wl_token: wl_token_clone,
         sisu_tokens: auth_response,
         gssv_token,
         xcloud_transfer_token: transfer_token,

@@ -1,16 +1,16 @@
 use serde::{Deserialize, Serialize};
 use std::fs;
 
+use crate::authenticator::SpecialTokenResponse;
 use crate::{
     app_params::XalClientParameters,
     models::response::{SisuAuthorizationResponse, XCloudTokenResponse, XSTSResponse},
 };
-// use crate::authenticator::SpecialTokenResponse;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct TokenStore {
     pub client_params: XalClientParameters,
-    // pub wl_token: SpecialTokenResponse,
+    pub wl_token: SpecialTokenResponse,
     pub sisu_tokens: SisuAuthorizationResponse,
     pub gssv_token: XSTSResponse,
     pub xcloud_transfer_token: XCloudTokenResponse,
