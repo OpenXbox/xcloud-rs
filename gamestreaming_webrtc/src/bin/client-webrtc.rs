@@ -1,16 +1,16 @@
 use anyhow::Result;
 use gamestreaming_webrtc::api::{IceCandidate, SessionResponse};
+use std::collections::HashMap;
 use std::fs::File;
 use std::sync::Arc;
-use std::collections::HashMap;
 use tokio::sync::{Mutex, Notify};
 use tokio::time::Duration;
 use webrtc::api::interceptor_registry::register_default_interceptors;
 use webrtc::api::media_engine::{MediaEngine, MIME_TYPE_H264, MIME_TYPE_OPUS};
 use webrtc::api::APIBuilder;
-use webrtc::data_channel::RTCDataChannel;
 use webrtc::data_channel::data_channel_init::RTCDataChannelInit;
 use webrtc::data_channel::data_channel_message::DataChannelMessage;
+use webrtc::data_channel::RTCDataChannel;
 use webrtc::ice_transport::ice_candidate::{RTCIceCandidate, RTCIceCandidateInit};
 use webrtc::ice_transport::ice_server::RTCIceServer;
 use webrtc::interceptor::registry::Registry;
@@ -45,7 +45,6 @@ struct DataChannelParams {
     protocol: &'static str,
     is_ordered: Option<bool>,
 }
-
 
 lazy_static! {
     static ref PEER_CONNECTION_MUTEX: Arc<Mutex<Option<Arc<RTCPeerConnection>>>> =
@@ -217,26 +216,54 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .await;
 
     let channel_params: HashMap<String, DataChannelParams> = [
-        ("input".into(), DataChannelParams { id: 3, protocol: "1.0".into(), is_ordered: Some(true) }),
-        ("control".into(), DataChannelParams { id: 4, protocol: "controlV1".into(), is_ordered: None }),
-        ("message".into(), DataChannelParams { id: 5, protocol: "messageV1".into(), is_ordered: None }),
-        ("chat".into(), DataChannelParams { id: 6, protocol: "chatV1".into(), is_ordered: None }),
-
-    ].into();
+        (
+            "input".into(),
+            DataChannelParams {
+                id: 3,
+                protocol: "1.0".into(),
+                is_ordered: Some(true),
+            },
+        ),
+        (
+            "control".into(),
+            DataChannelParams {
+                id: 4,
+                protocol: "controlV1".into(),
+                is_ordered: None,
+            },
+        ),
+        (
+            "message".into(),
+            DataChannelParams {
+                id: 5,
+                protocol: "messageV1".into(),
+                is_ordered: None,
+            },
+        ),
+        (
+            "chat".into(),
+            DataChannelParams {
+                id: 6,
+                protocol: "chatV1".into(),
+                is_ordered: None,
+            },
+        ),
+    ]
+    .into();
 
     let mut channel_defs: HashMap<String, Arc<RTCDataChannel>> = HashMap::new();
     // Create channels and store in HashMap
     for (name, params) in channel_params.into_iter() {
         let chan = peer_connection
-        .create_data_channel(
-            &name,
-            Some(RTCDataChannelInit {
-                ordered: params.is_ordered,
-                protocol: Some(params.protocol.to_owned()),
-                ..Default::default()
-            }),
-        )
-        .await?;
+            .create_data_channel(
+                &name,
+                Some(RTCDataChannelInit {
+                    ordered: params.is_ordered,
+                    protocol: Some(params.protocol.to_owned()),
+                    ..Default::default()
+                }),
+            )
+            .await?;
 
         channel_defs.insert(name, chan);
     }
@@ -285,30 +312,32 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     for (name, channel) in channel_defs.into_iter() {
         let d1 = Arc::clone(&channel);
-        channel.on_open(Box::new(move || {
-            println!("Data channel '{}'-'{}' open", d1.label(), d1.id());
-    
-            let d2 = Arc::clone(&d1);
-            Box::pin(async move {
-                let mut result = Result::<usize, webrtc::Error>::Ok(0);
-                while result.is_ok() {
-                    let timeout = tokio::time::sleep(Duration::from_secs(5));
-                    tokio::pin!(timeout);
-    
-                    tokio::select! {
-                        _ = timeout.as_mut() =>{
-                            /*
-                            From example code - Sending random strings over datachannel
-                            let message = math_rand_alpha(15);
-                            println!("Sending '{}'", message);
-                            result = d2.send_text(message).await.map_err(Into::into);
-                            */
-                        }
-                    };
-                }
-            })
-        })).await;
-    
+        channel
+            .on_open(Box::new(move || {
+                println!("Data channel '{}'-'{}' open", d1.label(), d1.id());
+
+                let d2 = Arc::clone(&d1);
+                Box::pin(async move {
+                    let mut result = Result::<usize, webrtc::Error>::Ok(0);
+                    while result.is_ok() {
+                        let timeout = tokio::time::sleep(Duration::from_secs(5));
+                        tokio::pin!(timeout);
+
+                        tokio::select! {
+                            _ = timeout.as_mut() =>{
+                                /*
+                                From example code - Sending random strings over datachannel
+                                let message = math_rand_alpha(15);
+                                println!("Sending '{}'", message);
+                                result = d2.send_text(message).await.map_err(Into::into);
+                                */
+                            }
+                        };
+                    }
+                })
+            }))
+            .await;
+
         let message_label = name.clone();
         channel
             .on_message(Box::new(move |msg: DataChannelMessage| {
