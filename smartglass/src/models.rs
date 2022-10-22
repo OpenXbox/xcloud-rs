@@ -116,136 +116,136 @@ pub mod request {
 #[derive(Deserialize, Serialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct SmartglassApiStatus {
-    error_code: String,
-    error_message: Option<String>,
+    pub error_code: String,
+    pub error_message: Option<String>,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct StorageDevice {
-    storage_device_id: String,
-    storage_device_name: String,
-    is_default: bool,
-    total_space_bytes: f32,
-    free_space_bytes: f32,
+    pub storage_device_id: String,
+    pub storage_device_name: String,
+    pub is_default: bool,
+    pub total_space_bytes: f32,
+    pub free_space_bytes: f32,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct SmartglassConsole {
-    id: String,
-    name: String,
-    console_type: ConsoleType,
-    power_state: PowerState,
-    console_streaming_enabled: bool,
-    digital_assistant_remote_control_enabled: bool,
-    remote_management_enabled: bool,
-    storage_devices: Option<Vec<StorageDevice>>,
+    pub id: String,
+    pub name: String,
+    pub console_type: ConsoleType,
+    pub power_state: PowerState,
+    pub console_streaming_enabled: bool,
+    pub digital_assistant_remote_control_enabled: bool,
+    pub remote_management_enabled: bool,
+    pub storage_devices: Option<Vec<StorageDevice>>,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct SmartglassConsoleList {
-    agent_user_id: Option<String>,
-    result: Vec<SmartglassConsole>,
-    status: SmartglassApiStatus,
+    pub agent_user_id: Option<String>,
+    pub result: Vec<SmartglassConsole>,
+    pub status: SmartglassApiStatus,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct SmartglassConsoleStatus {
-    power_state: PowerState,
-    console_streaming_enabled: bool,
-    digital_assistant_remote_control_enabled: bool,
-    remote_management_enabled: bool,
+    pub power_state: PowerState,
+    pub console_streaming_enabled: bool,
+    pub digital_assistant_remote_control_enabled: bool,
+    pub remote_management_enabled: bool,
 
-    focus_app_aumid: String,
-    is_tv_configured: bool,
-    login_state: Option<String>,
-    playback_state: PlaybackState,
+    pub focus_app_aumid: String,
+    pub is_tv_configured: bool,
+    pub login_state: Option<String>,
+    pub playback_state: PlaybackState,
 
-    storage_devices: Option<Vec<StorageDevice>>,
-    status: SmartglassApiStatus,
+    pub storage_devices: Option<Vec<StorageDevice>>,
+    pub status: SmartglassApiStatus,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct InstalledPackage {
-    one_store_product_id: Option<String>,
-    title_id: i32,
-    aumid: Option<String>,
-    last_active_time: Option<String>,
-    is_game: bool,
-    name: Option<String>,
-    content_type: String,
-    instance_id: String,
-    storage_device_id: String,
-    unique_id: String,
-    legacy_product_id: Option<String>,
-    version: i32,
-    size_in_bytes: i32,
-    install_time: String,
-    update_time: Option<String>,
-    parent_id: Option<String>,
+    pub one_store_product_id: Option<String>,
+    pub title_id: i32,
+    pub aumid: Option<String>,
+    pub last_active_time: Option<String>,
+    pub is_game: bool,
+    pub name: Option<String>,
+    pub content_type: String,
+    pub instance_id: String,
+    pub storage_device_id: String,
+    pub unique_id: String,
+    pub legacy_product_id: Option<String>,
+    pub version: i32,
+    pub size_in_bytes: i32,
+    pub install_time: String,
+    pub update_time: Option<String>,
+    pub parent_id: Option<String>,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct InstalledPackagesList {
-    result: Vec<InstalledPackage>,
-    status: SmartglassApiStatus,
-    agent_user_id: Option<String>,
+    pub result: Vec<InstalledPackage>,
+    pub status: SmartglassApiStatus,
+    pub agent_user_id: Option<String>,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct StorageDevicesList {
-    device_id: String,
-    result: Vec<StorageDevice>,
-    status: SmartglassApiStatus,
+    pub device_id: String,
+    pub result: Vec<StorageDevice>,
+    pub status: SmartglassApiStatus,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct OpStatusNode {
-    operation_status: OpStatus,
-    op_id: String,
-    originating_session_id: String,
-    command: String,
-    succeeded: bool,
-    console_status_code: Option<i32>,
-    xccs_error_code: Option<ErrorCode>,
-    h_result: Option<i32>,
-    message: Option<String>,
+    pub operation_status: OpStatus,
+    pub op_id: String,
+    pub originating_session_id: String,
+    pub command: String,
+    pub succeeded: bool,
+    pub console_status_code: Option<i32>,
+    pub xccs_error_code: Option<ErrorCode>,
+    pub h_result: Option<i32>,
+    pub message: Option<String>,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct OperationStatusResponse {
-    op_status_list: Vec<OpStatusNode>,
-    status: SmartglassApiStatus,
+    pub op_status_list: Vec<OpStatusNode>,
+    pub status: SmartglassApiStatus,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct CommandDestination {
-    id: String,
-    name: String,
-    power_state: PowerState,
-    remote_management_enabled: bool,
-    console_streaming_enabled: bool,
-    console_type: ConsoleType,
-    wireless_warning: Option<String>,
-    out_of_home_warning: Option<String>,
+    pub id: String,
+    pub name: String,
+    pub power_state: PowerState,
+    pub remote_management_enabled: bool,
+    pub console_streaming_enabled: bool,
+    pub console_type: ConsoleType,
+    pub wireless_warning: Option<String>,
+    pub out_of_home_warning: Option<String>,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct CommandResponse {
-    result: Option<String>,
-    ui_text: Option<String>,
-    destination: CommandDestination,
-    user_info: Option<String>,
-    op_id: String,
-    status: SmartglassApiStatus,
+    pub result: Option<String>,
+    pub ui_text: Option<String>,
+    pub destination: CommandDestination,
+    pub user_info: Option<String>,
+    pub op_id: String,
+    pub status: SmartglassApiStatus,
 }

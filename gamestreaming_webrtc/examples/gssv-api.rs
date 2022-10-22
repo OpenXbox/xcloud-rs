@@ -1,26 +1,20 @@
 use gamestreaming_webrtc::api::GssvApi;
-use xal::utils::TokenStore;
+use gamestreaming_auth::authenticate;
 
 const TOKENS_FILEPATH: &str = "tokens.json";
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let ts = match TokenStore::load(TOKENS_FILEPATH) {
-        Ok(ts) => ts,
-        Err(err) => {
-            println!("Failed to load tokens!");
-            return Err(err);
-        }
-    };
+    let auth_ctx = authenticate(TOKENS_FILEPATH).await?;
 
     println!("Logging in");
-    let home_api = GssvApi::login_xhome(&ts.gssv_token.token_data.token).await?;
+    let home_api = GssvApi::login_xhome(&auth_ctx.gssv_token.token).await?;
     println!("Fetching consoles");
-    println!("{:?}", home_api.get_consoles().await);
+    println!("{:?}", home_api.get_consoles().await?);
 
-    let xcloud_api = GssvApi::login_xcloud(&ts.gssv_token.token_data.token).await?;
+    let xcloud_api = GssvApi::login_xcloud(&auth_ctx.gssv_token.token).await?;
     println!("Fetching titles");
-    println!("{:?}", xcloud_api.get_titles().await);
+    println!("{:?}", xcloud_api.get_titles().await?);
 
     Ok(())
 }

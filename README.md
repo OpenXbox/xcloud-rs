@@ -16,16 +16,10 @@ cargo doc
 
 ### Fetch tokens
 
-Graphical / via WebView
+CLI / Manually copying redirect URI
 
 ```text
-cargo run --bin auth-webview --features=webview
-```
-
-CLI / Manually copying rdirect URI
-
-```text
-cargo run --bin auth-cli --features=tokio
+cargo run --examples auth_gssv
 ```
 
 ### Test Gssv Api
@@ -40,6 +34,8 @@ cargo run --example gssv-api
 
 Note: Requires tokens (see above)
 
+Writes audio/video tracks to file
+
 ```text
-cargo run --bin client-webrtc --features="xal webrtc-rs"
+cargo run --bin client_sdl2
 ```

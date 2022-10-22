@@ -1,24 +1,21 @@
 use anyhow::Result;
-use gamestreaming_webrtc::api::{IceCandidate, SessionResponse};
-use std::collections::HashMap;
 use std::fs::File;
 use std::sync::Arc;
+use std::collections::HashMap;
 use tokio::sync::{Mutex, Notify};
 use tokio::time::Duration;
 use webrtc::api::interceptor_registry::register_default_interceptors;
 use webrtc::api::media_engine::{MediaEngine, MIME_TYPE_H264, MIME_TYPE_OPUS};
 use webrtc::api::APIBuilder;
+use webrtc::data_channel::RTCDataChannel;
 use webrtc::data_channel::data_channel_init::RTCDataChannelInit;
 use webrtc::data_channel::data_channel_message::DataChannelMessage;
-use webrtc::data_channel::RTCDataChannel;
 use webrtc::ice_transport::ice_candidate::{RTCIceCandidate, RTCIceCandidateInit};
 use webrtc::ice_transport::ice_server::RTCIceServer;
 use webrtc::interceptor::registry::Registry;
 use webrtc::media::io::h264_writer::H264Writer;
 use webrtc::media::io::ogg_writer::OggWriter;
 use webrtc::peer_connection::configuration::RTCConfiguration;
-use webrtc::peer_connection::math_rand_alpha;
-use webrtc::peer_connection::offer_answer_options::RTCOfferOptions;
 use webrtc::peer_connection::peer_connection_state::RTCPeerConnectionState;
 use webrtc::peer_connection::sdp::session_description::RTCSessionDescription;
 use webrtc::peer_connection::RTCPeerConnection;
@@ -26,13 +23,13 @@ use webrtc::rtcp::payload_feedbacks::picture_loss_indication::PictureLossIndicat
 use webrtc::rtp_transceiver::rtp_codec::{
     RTCRtpCodecCapability, RTCRtpCodecParameters, RTPCodecType,
 };
-use webrtc::rtp_transceiver::rtp_receiver::RTCRtpReceiver;
 use webrtc::rtp_transceiver::rtp_transceiver_direction::RTCRtpTransceiverDirection;
 use webrtc::rtp_transceiver::RTCRtpTransceiverInit;
 use webrtc::track::track_remote::TrackRemote;
 
+use gamestreaming_webrtc::api::IceCandidate;
 use gamestreaming_webrtc::{GamestreamingClient, Platform};
-use xal::utils::TokenStore;
+use gamestreaming_webrtc::auth::authenticate;
 
 #[macro_use]
 extern crate lazy_static;
@@ -45,6 +42,7 @@ struct DataChannelParams {
     protocol: &'static str,
     is_ordered: Option<bool>,
 }
+
 
 lazy_static! {
     static ref PEER_CONNECTION_MUTEX: Arc<Mutex<Option<Arc<RTCPeerConnection>>>> =
@@ -150,17 +148,11 @@ async fn create_peer_connection() -> Result<RTCPeerConnection, webrtc::Error> {
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // XCloud part
 
-    let ts = match TokenStore::load(TOKENS_FILEPATH) {
-        Ok(ts) => ts,
-        Err(err) => {
-            println!("Failed to load tokens!");
-            return Err(err);
-        }
-    };
+    let ts = authenticate(TOKENS_FILEPATH).await?;
 
-    let xcloud = GamestreamingClient::create(
+    let xcloud = GamestreamingClient::new(
         Platform::Cloud,
-        &ts.gssv_token.token_data.token,
+        &ts.gssv_token.token,
         &ts.xcloud_transfer_token.lpt,
     )
     .await?;
@@ -212,58 +204,29 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
                 }
             })
-        }))
-        .await;
+        }));
 
     let channel_params: HashMap<String, DataChannelParams> = [
-        (
-            "input".into(),
-            DataChannelParams {
-                id: 3,
-                protocol: "1.0".into(),
-                is_ordered: Some(true),
-            },
-        ),
-        (
-            "control".into(),
-            DataChannelParams {
-                id: 4,
-                protocol: "controlV1".into(),
-                is_ordered: None,
-            },
-        ),
-        (
-            "message".into(),
-            DataChannelParams {
-                id: 5,
-                protocol: "messageV1".into(),
-                is_ordered: None,
-            },
-        ),
-        (
-            "chat".into(),
-            DataChannelParams {
-                id: 6,
-                protocol: "chatV1".into(),
-                is_ordered: None,
-            },
-        ),
-    ]
-    .into();
+        ("input".into(), DataChannelParams { id: 3, protocol: "1.0".into(), is_ordered: Some(true) }),
+        ("control".into(), DataChannelParams { id: 4, protocol: "controlV1".into(), is_ordered: None }),
+        ("message".into(), DataChannelParams { id: 5, protocol: "messageV1".into(), is_ordered: None }),
+        ("chat".into(), DataChannelParams { id: 6, protocol: "chatV1".into(), is_ordered: None }),
+
+    ].into();
 
     let mut channel_defs: HashMap<String, Arc<RTCDataChannel>> = HashMap::new();
     // Create channels and store in HashMap
     for (name, params) in channel_params.into_iter() {
         let chan = peer_connection
-            .create_data_channel(
-                &name,
-                Some(RTCDataChannelInit {
-                    ordered: params.is_ordered,
-                    protocol: Some(params.protocol.to_owned()),
-                    ..Default::default()
-                }),
-            )
-            .await?;
+        .create_data_channel(
+            &name,
+            Some(RTCDataChannelInit {
+                ordered: params.is_ordered,
+                protocol: Some(params.protocol.to_owned()),
+                ..Default::default()
+            }),
+        )
+        .await?;
 
         channel_defs.insert(name, chan);
     }
@@ -272,19 +235,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     peer_connection
         .add_transceiver_from_kind(
             RTPCodecType::Audio,
-            &[RTCRtpTransceiverInit {
+            Some(RTCRtpTransceiverInit {
                 direction: RTCRtpTransceiverDirection::Sendrecv,
                 send_encodings: vec![],
-            }],
+            }),
         )
         .await?;
     peer_connection
         .add_transceiver_from_kind(
             RTPCodecType::Video,
-            &[RTCRtpTransceiverInit {
+            Some(RTCRtpTransceiverInit {
                 direction: RTCRtpTransceiverDirection::Recvonly,
                 send_encodings: vec![],
-            }],
+            }),
         )
         .await?;
 
@@ -305,38 +268,34 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
 
             Box::pin(async {})
-        }))
-        .await;
+        }));
 
     // Register channel opening / on message handling
 
     for (name, channel) in channel_defs.into_iter() {
         let d1 = Arc::clone(&channel);
-        channel
-            .on_open(Box::new(move || {
-                println!("Data channel '{}'-'{}' open", d1.label(), d1.id());
+        channel.on_open(Box::new(move || {
+            println!("Data channel '{}'-'{}' open", d1.label(), d1.id());
 
-                let d2 = Arc::clone(&d1);
-                Box::pin(async move {
-                    let mut result = Result::<usize, webrtc::Error>::Ok(0);
-                    while result.is_ok() {
-                        let timeout = tokio::time::sleep(Duration::from_secs(5));
-                        tokio::pin!(timeout);
+            Box::pin(async move {
+                let result = Result::<usize, webrtc::Error>::Ok(0);
+                while result.is_ok() {
+                    let timeout = tokio::time::sleep(Duration::from_secs(5));
+                    tokio::pin!(timeout);
 
-                        tokio::select! {
-                            _ = timeout.as_mut() =>{
-                                /*
-                                From example code - Sending random strings over datachannel
-                                let message = math_rand_alpha(15);
-                                println!("Sending '{}'", message);
-                                result = d2.send_text(message).await.map_err(Into::into);
-                                */
-                            }
-                        };
-                    }
-                })
-            }))
-            .await;
+                    tokio::select! {
+                        _ = timeout.as_mut() =>{
+                            /*
+                            From example code - Sending random strings over datachannel
+                            let message = math_rand_alpha(15);
+                            println!("Sending '{}'", message);
+                            result = d2.send_text(message).await.map_err(Into::into);
+                            */
+                        }
+                    };
+                }
+            })
+        }));
 
         let message_label = name.clone();
         channel
@@ -352,8 +311,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     message_label, msg_str
                 );
                 Box::pin(async {})
-            }))
-            .await;
+            }));
     }
 
     let (video_file, audio_file) = ("video.mkv", "audio.ogg");
@@ -371,54 +329,50 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // an ivf file, since we could have multiple video tracks we provide a counter.
     // In your application this is where you would handle/process video
     let pc = Arc::downgrade(&peer_connection);
-    peer_connection.on_track(Box::new(move |track: Option<Arc<TrackRemote>>, _receiver: Option<Arc<RTCRtpReceiver>>| {
-        if let Some(track) = track {
-            // Send a PLI on an interval so that the publisher is pushing a keyframe every rtcpPLIInterval
-            let media_ssrc = track.ssrc();
-            let pc2 = pc.clone();
-            tokio::spawn(async move {
-                let mut result = Result::<usize>::Ok(0);
-                while result.is_ok() {
-                    let timeout = tokio::time::sleep(Duration::from_secs(3));
-                    tokio::pin!(timeout);
+    peer_connection.on_track(Box::new(move |track, _receiver, _transceiver| {
+        // Send a PLI on an interval so that the publisher is pushing a keyframe every rtcpPLIInterval
+        let media_ssrc = track.ssrc();
+        let pc2 = pc.clone();
+        tokio::spawn(async move {
+            let mut result = Result::<usize>::Ok(0);
+            while result.is_ok() {
+                let timeout = tokio::time::sleep(Duration::from_secs(3));
+                tokio::pin!(timeout);
 
-                    tokio::select! {
-                        _ = timeout.as_mut() =>{
-                            if let Some(pc) = pc2.upgrade(){
-                                result = pc.write_rtcp(&[Box::new(PictureLossIndication{
-                                    sender_ssrc: 0,
-                                    media_ssrc,
-                                })]).await.map_err(Into::into);
-                            }else {
-                                break;
-                            }
+                tokio::select! {
+                    _ = timeout.as_mut() =>{
+                        if let Some(pc) = pc2.upgrade(){
+                            result = pc.write_rtcp(&[Box::new(PictureLossIndication{
+                                sender_ssrc: 0,
+                                media_ssrc,
+                            })]).await.map_err(Into::into);
+                        }else {
+                            break;
                         }
-                    };
-                }
-            });
+                    }
+                };
+            }
+        });
 
-            let notify_rx2 = Arc::clone(&notify_rx);
-            let h264_writer2 = Arc::clone(&h264_writer);
-            let ogg_writer2 = Arc::clone(&ogg_writer);
-            Box::pin(async move {
-                let codec = track.codec().await;
-                let mime_type = codec.capability.mime_type.to_lowercase();
-                if mime_type == MIME_TYPE_OPUS.to_lowercase() {
-                    println!("Got Opus track, saving to disk as output.opus (48 kHz, 2 channels)");     
+        let notify_rx2 = Arc::clone(&notify_rx);
+        let h264_writer2 = Arc::clone(&h264_writer);
+        let ogg_writer2 = Arc::clone(&ogg_writer);
+        Box::pin(async move {
+            let codec = track.codec();
+            let mime_type = codec.capability.mime_type.to_lowercase();
+            if mime_type == MIME_TYPE_OPUS.to_lowercase() {
+                println!("Got Opus track, saving to disk as output.opus (48 kHz, 2 channels)");
+                tokio::spawn(async move {
+                    let _ = save_to_disk(ogg_writer2, track, notify_rx2).await;
+                });
+            } else if mime_type == MIME_TYPE_H264.to_lowercase() {
+                println!("Got h264 track, saving to disk as output.h264");
                     tokio::spawn(async move {
-                        let _ = save_to_disk(ogg_writer2, track, notify_rx2).await;
+                        let _ = save_to_disk(h264_writer2, track, notify_rx2).await;
                     });
-                } else if mime_type == MIME_TYPE_H264.to_lowercase() {
-                    println!("Got h264 track, saving to disk as output.h264");
-                     tokio::spawn(async move {
-                         let _ = save_to_disk(h264_writer2, track, notify_rx2).await;
-                     });
-                }
-            })
-        }else {
-            Box::pin(async {})
-        }
-	})).await;
+            }
+        })
+    }));
 
     // Create an offer to send to the other process
     let offer = peer_connection.create_offer(None).await?;
@@ -452,7 +406,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut candidates_ready = vec![];
 
     for c in css {
-        let json = c.to_json().await?;
+        let json = c.to_json()?;
         let r = IceCandidate {
             candidate: json.candidate,
             sdp_mid: json.sdp_mid,
@@ -494,3 +448,5 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     Ok(())
 }
+
+// fn main() {}

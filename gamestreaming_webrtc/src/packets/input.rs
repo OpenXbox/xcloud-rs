@@ -208,7 +208,7 @@ impl InputPacket {
 
 #[cfg(test)]
 mod tests {
-    use deku::bitvec::BitSlice;
+    use deku::prelude::*;
 
     use super::*;
 
@@ -268,11 +268,10 @@ mod tests {
     #[test]
     fn parse_input_report_type() {
         let data = [0x41u8];
-        let bitslice = BitSlice::from_slice(&data).expect("Failed to create bitslice");
         let (rest, parsed) =
-            InputReportType::read(bitslice, ()).expect("Failed to parse input report type");
+            InputReportType::from_bytes((&data, 0)).expect("Failed to parse input report type");
 
-        assert!(rest.is_empty());
+        assert!(rest.0.is_empty());
 
         assert!(parsed.Keyboard);
         assert!(parsed.Metadata);
@@ -287,11 +286,10 @@ mod tests {
         // A, DPadRight, LeftThumb
         let data = [0x24, 0x08u8];
 
-        let bitslice = BitSlice::from_slice(&data).expect("Failed to create bitslice");
         let (rest, parsed) =
-            GamepadButton::read(bitslice, ()).expect("Failed to parse gamepad button flags");
+            GamepadButton::from_bytes((&data, 0)).expect("Failed to parse gamepad button flags");
 
-        assert!(rest.is_empty());
+        assert!(rest.0.is_empty());
 
         println!("{:?}", parsed);
 

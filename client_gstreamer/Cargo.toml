@@ -1,0 +1,18 @@
+[package]
+name = "client_gstreamer"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+gstreamer-webrtc = { version = "0.21.2", features = ["v1_16", "v1_18"] }
+async-std = "1.12.0"
+futures = "0.3.29"
+clap = { version = "4.4.11", features = ["derive"] }
+rand = "0.8.5"
+tokio = { version = "1", features = ["full"] }
+anyhow = "1"
+serde_json = "1"
+gamestreaming_webrtc = { path = "../gamestreaming_webrtc" }
+derive_more = { version = "2.0.1", features = ["error", "display"] }
+async-tungstenite = { version = "0.31.0", features = ["async-std", "async-std-runtime"] }
+serde = { version = "1", features = ["derive"] }

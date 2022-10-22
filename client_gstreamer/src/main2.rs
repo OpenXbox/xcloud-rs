@@ -1,0 +1,546 @@
+use gamestreaming_webrtc::{
+    api::{IceCandidate, SessionResponse},
+    GamestreamingClient, Platform,
+    auth::authenticate,
+};
+use gst::prelude::*;
+use gst_webrtc::{ffi::GstWebRTCDataChannel, glib::{clone, self}};
+use gstreamer_webrtc::{self as gst_webrtc, gst};
+use std::{str::FromStr, sync::{Mutex, Arc}};
+
+use anyhow::{Context, Result, anyhow};
+use derive_more::{Display, Error};
+
+const H264_VIDEO_CAPS: &'static str = "application/x-rtp, media=video, clock-rate=90000, encoding-name=H264, payload=127, packetization-mode=(string)1, profile-level-id=(string)42002a";
+const OPUS_AUDIO_CAPS: &'static str =
+    "application/x-rtp, media=audio, clock-rate=48000, encoding-name=OPUS, payload=111, encoding=(string)2";
+
+/// macOS has a specific requirement that there must be a run loop running on the main thread in
+/// order to open windows and use OpenGL, and that the global NSApplication instance must be
+/// initialized.
+
+/// On macOS this launches the callback function on a thread.
+/// On other platforms it's just executed immediately.
+#[cfg(not(target_os = "macos"))]
+pub fn run<T, F: FnOnce() -> T + Send + 'static>(main: F) -> T
+where
+    T: Send + 'static,
+{
+    main()
+}
+
+#[cfg(target_os = "macos")]
+pub async fn run<T, F: FnOnce() -> T + Send + 'static>(main: F) -> T
+where
+    T: Send + 'static,
+{
+    use cocoa::appkit::NSApplication;
+
+    use std::thread;
+
+    unsafe {
+        let app = cocoa::appkit::NSApp();
+        let t = thread::spawn(|| {
+            let res = main();
+
+            let app = cocoa::appkit::NSApp();
+            app.stop_(cocoa::base::nil);
+
+            // Stopping the event loop requires an actual event
+            let event = cocoa::appkit::NSEvent::otherEventWithType_location_modifierFlags_timestamp_windowNumber_context_subtype_data1_data2_(
+                cocoa::base::nil,
+                cocoa::appkit::NSEventType::NSApplicationDefined,
+                cocoa::foundation::NSPoint { x: 0.0, y: 0.0 },
+                cocoa::appkit::NSEventModifierFlags::empty(),
+                0.0,
+                0,
+                cocoa::base::nil,
+                cocoa::appkit::NSEventSubtype::NSApplicationActivatedEventType,
+                0,
+                0,
+            );
+            app.postEvent_atStart_(event, cocoa::base::YES);
+
+            std::process::exit(0);
+
+            res
+        });
+
+        app.run();
+
+        t.join().unwrap()
+    }
+}
+
+async fn on_offer_created(
+    reply: &gst::StructureRef,
+    webrtc: &gst::Element,
+    xcloud: GamestreamingClient,
+    session: &SessionResponse,
+) -> anyhow::Result<()> {
+    println!("create-offer callback");
+
+    let offer: gst_webrtc::WebRTCSessionDescription = reply.get("offer")?;
+
+    let sdp_text = offer.sdp().as_text()?;
+    eprintln!("Local offer: {:?}", &sdp_text);
+
+    println!("Setting local description");
+    webrtc.emit_by_name::<()>("set-local-description", &[&offer, &None::<gst::Promise>]);
+
+    let sdp_response = xcloud.exchange_sdp(session, &sdp_text).await?;
+    eprintln!("Remote answer: {:?}", &sdp_response);
+    let sdp_response_text = sdp_response.exchange_response.sdp.unwrap();
+    let ret = gst_webrtc::gst_sdp::SDPMessage::parse_buffer(sdp_response_text.as_bytes())?;
+    let answer = gst_webrtc::WebRTCSessionDescription::new(gst_webrtc::WebRTCSDPType::Answer, ret);
+
+    println!("Setting remote description");
+    webrtc.emit_by_name::<()>("set-remote-description", &[&answer, &None::<gst::Promise>]);
+
+    Ok(())
+}
+
+fn send_ice_candidate_message(
+    mlineindex: u32,
+    candidate: &str,
+    candidates: &mut Box<Vec<IceCandidate>>,
+    xcloud: &GamestreamingClient,
+    session: &SessionResponse,
+    webrtc: &gst::Element,
+) -> anyhow::Result<()> {
+    ////dbg!(values);
+
+    //dbg!("Adding ICE candidate to pending list", &values);
+    candidates.push(IceCandidate {
+        candidate: candidate.to_string(),
+        sdp_mid: None,
+        sdp_mline_index: Some(mlineindex as u16),
+        username_fragment: None,
+    });
+
+    //dbg!("all", &candidates);
+    if candidates.len() == 6 {
+        eprintln!("Sending over ICE candidates");
+        let xcloud_clone = xcloud.clone();
+        let candidates_clone = candidates.clone();
+        let session_clone = session.clone();
+        let webrtc_clone = webrtc.clone();
+
+        tokio::spawn(async move {
+            let result = xcloud_clone
+                .exchange_ice(&session_clone, *candidates_clone)
+                .await
+                .expect("Failed ICE exchange");
+
+            eprintln!("Adding remote ICE candidates");
+            for candidate in result.exchange_response {
+                // Trimming candidate string to remove whitespace at the end
+                let c = candidate.candidate.trim();
+                let sdmlineindex = candidate.sdp_mline_index.unwrap() as u32;
+                eprintln!(
+                    "Adding remote ICE candidate: {:?} :::::::: {:?}",
+                    &c, sdmlineindex
+                );
+    
+                webrtc_clone.emit_by_name::<()>("add-ice-candidate", &[&sdmlineindex, &c]);
+            }
+        });
+    }
+    Ok(())
+}
+
+fn on_negotiation_needed(
+    webrtc: &gst::Element,
+    xcloud: &GamestreamingClient,
+    session: &SessionResponse,
+) -> anyhow::Result<()> {
+    println!("on-negotiation-needed");
+    let webrtc_clone = webrtc.clone();
+    let xcloud_clone = xcloud.clone();
+    let session_clone = session.clone();
+
+    let promise = gst::Promise::with_change_func(move |res| match res {
+        Ok(res) => match res {
+            Some(offer_res) => {
+                let _ = on_offer_created(offer_res, &webrtc_clone, xcloud_clone, &session_clone);
+            }
+            None => {}
+        },
+        Err(err) => {
+            eprintln!("Promise error: {:?}", err);
+        }
+    });
+    let options = gst::Structure::new_empty("options");
+    webrtc.emit_by_name::<()>("create-offer", &[&options, &promise]);
+
+    Ok(())
+}
+
+const TOKENS_FILEPATH: &'static str = "tokens.json";
+
+fn create_datachannels(
+    webrtc: &gst::Element,
+) -> anyhow::Result<
+    (
+        gst_webrtc::WebRTCDataChannel,
+        gst_webrtc::WebRTCDataChannel,
+        gst_webrtc::WebRTCDataChannel,
+        gst_webrtc::WebRTCDataChannel,
+    )
+> {
+    // Create datachannels
+    // INPUT, protocol: "1.0", ordered: true
+    let input_init_struct = gst::Structure::builder("options")
+        .field("ordered", true)
+        .field("protocol", "1.0")
+        .field("id", 3)
+        .build();
+
+    let input_channel = webrtc.emit_by_name::<gst_webrtc::WebRTCDataChannel>(
+        "create-data-channel",
+        &[&"input", &input_init_struct],
+    );
+
+    // CONTROL, protocol: "controlV1"
+    let control_init_struct = gst::Structure::builder("options")
+        .field("protocol", "controlV1")
+        .field("id", 4)
+        .build();
+    let control_channel = webrtc.emit_by_name::<gst_webrtc::WebRTCDataChannel>(
+        "create-data-channel",
+        &[&"control", &control_init_struct],
+    );
+
+    // MESSAGE, protocol: "messageV1"
+    let message_init_struct = gst::Structure::builder("options")
+        .field("protocol", "messageV1")
+        .field("id", 5)
+        .build();
+    let message_channel = webrtc.emit_by_name::<gst_webrtc::WebRTCDataChannel>(
+        "create-data-channel",
+        &[&"message", &message_init_struct],
+    );
+
+    // CHAT, protocol: "chatV1"
+    let chat_init_struct = gst::Structure::builder("options")
+        .field("protocol", "chatV1")
+        .field("id", 6)
+        .build();
+    let chat_channel = webrtc.emit_by_name::<gst_webrtc::WebRTCDataChannel>(
+        "create-data-channel",
+        &[&"chat", &chat_init_struct],
+    );
+
+    Ok((
+        input_channel,
+        control_channel,
+        message_channel,
+        chat_channel,
+    ))
+}
+
+#[derive(Debug, Clone)]
+enum GsSignal {
+    NegotiationNeeded,
+    OnIceCandidate(u32, String),
+    OnDataChannel,
+}
+
+async fn gstreamer_main() -> anyhow::Result<()> {
+    let auth_ctx = authenticate(TOKENS_FILEPATH)
+        .await
+        .unwrap();
+
+    let xcloud = GamestreamingClient::new(
+        Platform::Cloud,
+        &auth_ctx.gssv_token.token,
+        &auth_ctx.xcloud_transfer_token.lpt,
+    )
+    .await
+    .context("Failed to create gamestreaming client")?;
+
+    let session = match xcloud.lookup_games()
+        .await
+        .context("Failed looking up games")?
+        .get(2)
+    {
+        Some(title) => {
+            println!("Starting title: {:?}", title);
+            let session = xcloud.start_stream_xcloud(&title.title_id)
+                .await
+                .context("Failed starting stream")?;
+            println!("Session started successfully: {:?}", session);
+
+            session
+        }
+        None => {
+            return Err(anyhow::anyhow!("No titles received from API"));
+        }
+    };
+
+    // Initialize GStreamer
+    gst::init().unwrap();
+
+    // Create elements
+    let webrtc = gst::ElementFactory::make("webrtcbin")
+        .name("recv")
+        .property("stun-server", "stun://stun.l.google.com:19302")
+        .property("bundle-policy", gst_webrtc::WebRTCBundlePolicy::MaxBundle)
+        .build()
+        .context("Failed to create webrtcbin")?;
+
+    // VIDEO
+    let video_depay = gst::ElementFactory::make("rtph264depay").build()?;
+    let video_decoder = gst::ElementFactory::make("avdec_h264").build()?;
+    let video_convert = gst::ElementFactory::make("videoconvert")
+        .property("qos", false)
+        .build()?;
+    let video_sink = gst::ElementFactory::make("autovideosink")
+        .property("async-handling", true)
+        .property("sync", false)
+        .build()
+        .context("Failed to create video_sink")?;
+
+    // AUDIO
+    let audio_depay = gst::ElementFactory::make("rtpopusdepay").build()?;
+    let audio_decoder = gst::ElementFactory::make("opusdec").build()?;
+    let audio_convert = gst::ElementFactory::make("audioconvert").build()?;
+    let audio_sink = gst::ElementFactory::make("pipewiresink").build()?;
+
+    // Build the pipeline
+    let pipeline = gst::Pipeline::builder().name("test-pipeline").build();
+
+    pipeline
+        .add_many(&[
+            &webrtc,
+
+            &video_depay,
+            &video_decoder,
+            &video_convert,
+            &video_sink,
+
+            &audio_depay,
+            &audio_decoder,
+            &audio_convert,
+            &audio_sink,
+        ])?;
+    gst::Element::link_many(&[
+        &video_depay,
+        &video_decoder,
+        &video_convert,
+        &video_sink,
+    ])?;
+    gst::Element::link_many(&[
+        &audio_depay,
+        &audio_decoder,
+        &audio_convert,
+        &audio_sink,
+    ])?;
+
+    let (signal_tx, mut signal_rx) = tokio::sync::mpsc::unbounded_channel::<GsSignal>();
+
+    let mutex_signal_tx = Arc::new(Mutex::new(signal_tx));
+    let mutex_signal_tx_2 = mutex_signal_tx.clone();
+
+    // Connect callbacks
+    let xcloud_clone = xcloud.clone();
+    let xcloud_clone2 = xcloud.clone();
+    let session_clone = session.clone();
+    let session_clone2 = session.clone();
+    let candidates: Vec<IceCandidate> = vec![];
+    let cs_box = Mutex::new(Box::new(candidates));
+    let webrtc_clone = Box::new(webrtc.clone());
+    webrtc.connect("on-negotiation-needed", false, move |_| {
+        mutex_signal_tx.lock().unwrap().send(GsSignal::NegotiationNeeded).ok();
+        None
+    });
+
+    webrtc.connect("on-ice-candidate", false, move |values| {
+        let mlineindex = values[1].get::<u32>().unwrap();
+        let candidate = values[2].get::<String>().unwrap();
+
+        mutex_signal_tx_2.lock().unwrap().send(GsSignal::OnIceCandidate(mlineindex, candidate)).ok();
+        None
+    });
+
+    webrtc.connect("on-data-channel", true, move |values| {
+        dbg!("on-data-channel", values);
+        None
+    });
+
+    webrtc.connect_pad_added(move |_, pad| {
+        let pad_name = pad.name();
+        eprintln!("Pad added {} {:?}", pad_name, pad.direction());
+        if pad_name == "src_0" {
+            dbg!(pad.caps());
+            println!("Video Pad: {:?}", pad_name);
+
+            let depay_sink = &video_depay
+                .static_pad("sink")
+                .expect("Failed to get sink from video_depay");
+            pad.link(depay_sink)
+                .expect("Failed to link video src to depay_sink");
+        } else if pad_name == "src_1" {
+            println!("Audio Pad: {:?}", pad_name);
+            let depay_sink = &audio_depay
+                .static_pad("sink")
+                .expect("Failed to get sink from audio_depay");
+            pad.link(depay_sink)
+                .expect("Failed to link audio src to depay_sink");
+        } else {
+            //unreachable!()
+        };
+    });
+
+    // Create transceivers
+    // Video: Recvonly / H264
+    // Audio: SenvRecv / Opus
+    webrtc.emit_by_name::<gst::glib::Object>(
+        "add-transceiver",
+        &[
+            &gst_webrtc::WebRTCRTPTransceiverDirection::Recvonly,
+            &gst::Caps::from_str(H264_VIDEO_CAPS).expect("Failed to construct H264 Caps"),
+        ],
+    );
+
+    webrtc.emit_by_name::<gst::glib::Object>(
+        "add-transceiver",
+        &[
+            &gst_webrtc::WebRTCRTPTransceiverDirection::Sendrecv,
+            &gst::Caps::from_str(OPUS_AUDIO_CAPS).expect("Failed to construct OPUS Caps"),
+        ],
+    );
+
+    // Start playing
+    pipeline
+        .set_state(gst::State::Playing)
+        .expect("Failed setting PLAYING state");
+
+    println!("Transceivers created");
+    let channels = create_datachannels(&webrtc).expect("Failed to create datachannels");
+    dbg!(&channels);
+    let channel_input = channels.0;
+    let channel_control = channels.1;
+    let channel_message = channels.2;
+    let channel_chat = channels.3;
+
+    channel_input.connect_on_open(|a| {
+        eprintln!("Data channel opened: {:?}", a.label());
+    });
+
+    channel_control.connect_on_open(|a| {
+        eprintln!("Data channel opened: {:?}", a.label());
+            let msg = serde_json::to_string(&serde_json::json!({
+                "message":"authorizationRequest",
+                "accessKey":"4BDB3609-C1F1-4195-9B37-FEFF45DA8B8E",
+            })).expect("Error: Msg1");
+            a.send_string(Some(&msg));
+
+            let msg = serde_json::to_string(&serde_json::json!({
+                "message": "gamepadChanged",
+                "gamepadIndex": 0,
+                "wasAdded": true,
+            })).expect("Error: Msg2");
+            a.send_string(Some(&msg));
+    });
+
+    channel_message.connect_on_open(|a| {
+        eprintln!("Data channel opened: {:?}", a.label());
+        let msg = serde_json::to_string(&serde_json::json!({
+            "type":"Handshake",
+            "version":"messageV1",
+            "id":"0ab125e2-6eee-4687-a2f4-5cfb347f0643",
+            "cv":"",
+        })).expect("Error: Msg1");
+        a.send_string(Some(&msg));
+    });
+
+    channel_chat.connect_on_open(|a| {
+        eprintln!("Data channel opened: {:?}", a.label());
+    });
+
+    let session_clone3 = session.clone();
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .build()
+        .expect("Failed creating tokio runtime");
+
+    let keepalive_task = runtime.spawn(async move {
+        println!("Sending keepalive");
+        if let Err(err) = xcloud.keepalive(&session_clone3).await {
+            println!("Failed sending keepalive: {:?}", err);
+        }
+
+        tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+    });
+
+    loop {
+        match signal_rx.recv().await {
+            Some(signal) => match signal {
+                GsSignal::NegotiationNeeded => {
+                    if let Err(err) = on_negotiation_needed(&webrtc, &xcloud_clone, &session_clone) {
+                        eprintln!("Handling on-negotiation-needed failed: {}", err)
+                    }
+                },
+                GsSignal::OnIceCandidate(mlineindex, candidate) => {
+                    let mut cs_box_clone = cs_box.lock().expect("Failed mutex lock");
+
+                    let res = send_ice_candidate_message(
+                        mlineindex,
+                        &candidate,
+                        &mut cs_box_clone,
+                        &xcloud_clone2,
+                        &session_clone2,
+                        &webrtc_clone,
+                    );
+                    
+                    if let Err(err) = res {
+                        eprintln!("Handling ICE candidate message failed: {}", err)
+                    }
+                },
+                GsSignal::OnDataChannel => todo!(),
+            },
+            None => todo!(),
+        }
+    }
+
+    // Wait until error or EOS
+    let bus = pipeline.bus().unwrap();
+    for msg in bus.iter_timed(gst::ClockTime::NONE) {
+        use gst::MessageView;
+
+        match msg.view() {
+            MessageView::Eos(..) => break,
+            MessageView::Error(err) => {
+                println!(
+                    "Error from {:?}: {} ({:?})",
+                    err.src().map(|s| s.path_string()),
+                    err.error(),
+                    err.debug()
+                );
+                break;
+            }
+            MessageView::StateChanged(state) => {
+                println!("State change: {:?}", state);
+            }
+            v => {
+                println!("Woop: {:?}", v)
+            }
+        }
+    }
+    keepalive_task.abort();
+    // Shutdown pipeline
+    pipeline
+        .set_state(gst::State::Null)
+        .expect("Unable to set the pipeline to the `Null` state");
+    Ok(())
+}
+
+#[tokio::main]
+pub async fn main() {
+    // run wrapper is only required to set up the application environment on macOS
+    // (but not necessary in normal Cocoa applications where this is set up automatically)
+    match gstreamer_main().await {
+        Ok(r) => r,
+        Err(e) => eprintln!("Error! {:?}", e),
+    }
+}

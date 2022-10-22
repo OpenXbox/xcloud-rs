@@ -1,11 +1,19 @@
-use reqwest::{header, header::HeaderMap, Client, ClientBuilder, StatusCode, Url};
+use reqwest::{
+    Client, ClientBuilder, header, header::HeaderMap, StatusCode, Url,
+};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use serde_aux::prelude::*;
 use serde_json;
 use thiserror::Error;
+use gamestreaming_auth::xal::{
+    self,
+    extensions::JsonExDeserializeMiddleware
+};
 
 #[derive(Error, Debug)]
 pub enum GssvApiError {
+    #[error(transparent)]
+    XalError(#[from] xal::Error),
     #[error(transparent)]
     HttpError(#[from] reqwest::Error),
     #[error(transparent)]
@@ -15,6 +23,7 @@ pub enum GssvApiError {
 }
 
 /// Gamestreaming API Client
+#[derive(Debug, Clone)]
 pub struct GssvApi {
     client: Client,
     base_url: Url,
@@ -53,7 +62,7 @@ impl GssvApi {
                 .map_err(|_| GssvApiError::Unknown)?,
         );
 
-        let client = reqwest::Client::new();
+        let client = Client::new();
         client
             .post(login_url)
             .headers(headers)
@@ -65,9 +74,9 @@ impl GssvApi {
             .await
             .map_err(GssvApiError::HttpError)?
             .error_for_status()?
-            .json::<LoginResponse>()
+            .json_ex::<LoginResponse>()
             .await
-            .map_err(GssvApiError::HttpError)
+            .map_err(std::convert::Into::into)
     }
 
     pub async fn login_xhome(token: &str) -> Result<Self, GssvApiError> {
@@ -113,9 +122,9 @@ impl GssvApi {
             .await
             .map_err(GssvApiError::HttpError)?
             .error_for_status()?
-            .json::<T>()
+            .json_ex::<T>()
             .await
-            .map_err(GssvApiError::HttpError)
+            .map_err(std::convert::Into::into)
     }
 
     async fn post_json<RQ, RS>(
@@ -139,9 +148,9 @@ impl GssvApi {
             .await
             .map_err(GssvApiError::HttpError)?
             .error_for_status()?
-            .json::<RS>()
+            .json_ex::<RS>()
             .await
-            .map_err(GssvApiError::HttpError)
+            .map_err(std::convert::Into::into)
     }
 
     pub async fn get_consoles(&self) -> Result<ConsolesResponse, GssvApiError> {
@@ -222,8 +231,7 @@ impl GssvApi {
             self.url(&format!("/v5/sessions/{}/play", self.platform)),
             &request_body,
             Some(headers),
-        )
-        .await
+        ).await
     }
 
     pub async fn session_connect(
@@ -251,16 +259,14 @@ impl GssvApi {
         &self,
         session: &SessionResponse,
     ) -> Result<SessionStateResponse, GssvApiError> {
-        self.get_json(self.session_url(session, "/state"), None)
-            .await
+        self.get_json(self.session_url(session, "/state"), None).await
     }
 
     pub async fn get_session_config(
         &self,
         session: &SessionResponse,
     ) -> Result<GssvSessionConfig, GssvApiError> {
-        self.get_json(self.session_url(session, "/configuration"), None)
-            .await
+        self.get_json(self.session_url(session, "/configuration"), None).await
     }
 
     pub async fn set_sdp(&self, session: &SessionResponse, sdp: &str) -> Result<(), GssvApiError> {
@@ -333,17 +339,11 @@ impl GssvApi {
         }
     }
 
-    pub async fn get_sdp(
-        &self,
-        session: &SessionResponse,
-    ) -> Result<SdpExchangeResponse, GssvApiError> {
+    pub async fn get_sdp(&self, session: &SessionResponse) -> Result<SdpExchangeResponse, GssvApiError> {
         self.get_json(self.session_url(session, "/sdp"), None).await
     }
 
-    pub async fn get_ice(
-        &self,
-        session: &SessionResponse,
-    ) -> Result<IceExchangeResponse, GssvApiError> {
+    pub async fn get_ice(&self, session: &SessionResponse) -> Result<IceExchangeResponse, GssvApiError> {
         self.get_json(self.session_url(session, "/ice"), None).await
     }
 
@@ -358,9 +358,9 @@ impl GssvApi {
             .await
             .map_err(GssvApiError::HttpError)?
             .error_for_status()?
-            .json::<KeepaliveResponse>()
+            .json_ex::<KeepaliveResponse>()
             .await
-            .map_err(GssvApiError::HttpError)
+            .map_err(std::convert::Into::into)
     }
 }
 
@@ -594,7 +594,7 @@ pub struct ConsoleEntry {
     pub play_path: String,
     pub out_of_home_warning: bool,
     pub wireless_warning: bool,
-    pub is_devkit: bool,
+    pub is_dev_kit: bool,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -602,7 +602,7 @@ pub struct ConsoleEntry {
 pub struct ConsolesResponse {
     pub total_items: u32,
     pub continuation_token: Option<String>,
-    pub results: Vec<String>,
+    pub results: Vec<ConsoleEntry>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -639,13 +639,13 @@ pub struct TitleResult {
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct TitlesResponse {
-    pub e_tag: String,
+    pub e_tag: Option<String>,
     pub total_items: u32,
     pub results: Vec<TitleResult>,
     pub continuation_token: Option<String>,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct SessionResponse {
     session_path: String,
@@ -674,8 +674,8 @@ pub struct ChatConfigurationResponse {
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct SdpResponse {
-    pub chat: u16,
-    pub chat_configuration: ChatConfigurationResponse,
+    pub chat: Option<u16>,
+    pub chat_configuration: Option<ChatConfigurationResponse>,
     pub control: u16,
     pub input: u16,
     pub message: u16,
@@ -717,6 +717,10 @@ pub struct KeepaliveResponse {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn consoles_response() -> &'static str {
+        r#"{"totalItems":1,"results":[{"deviceName":"XboxSeriesX","serverId":"F4000BA3424366F0","powerState":"ConnectedStandby","consoleType":"XboxSeriesX","playPath":"v5/sessions/home/play","outOfHomeWarning":true,"wirelessWarning":false,"isDevKit":false}],"continuationToken":null}"#
+    }
 
     fn sdp_offer_message() -> &'static str {
         r#"{"messageType":"offer","sdp":"v=0\r\no=- 3296606666082362637 2 IN IP4 127.0.0.1\r\ns=-\r\nt=0 0\r\na=group:BUNDLE 0 1 2\r\na=extmap-allow-mixed\r\na=msid-semantic: WMS\r\nm=audio 9 UDP/TLS/RTP/SAVPF 111 63 103 104 9 0 8 106 105 13 110 112 113 126\r\nc=IN IP4 0.0.0.0\r\na=rtcp:9 IN IP4 0.0.0.0\r\na=ice-ufrag:bSbi\r\na=ice-pwd:BXzujnFw/cHKF8tMgtoo/cne\r\na=ice-options:trickle\r\na=fingerprint:sha-256 CB:87:A2:17:63:29:8C:10:5F:CE:29:22:76:ED:C3:89:64:94:48:29:E0:7C:83:13:70:41:C0:5C:08:D2:69:33\r\na=setup:actpass\r\na=mid:0\r\na=extmap:1 urn:ietf:params:rtp-hdrext:ssrc-audio-level\r\na=extmap:2 http://www.webrtc.org/experiments/rtp-hdrext/abs-send-time\r\na=extmap:3 http://www.ietf.org/id/draft-holmer-rmcat-transport-wide-cc-extensions-01\r\na=extmap:4 urn:ietf:params:rtp-hdrext:sdes:mid\r\na=sendrecv\r\na=msid:- a75c2046-2efe-4b04-aeb9-ed7beecf7871\r\na=rtcp-mux\r\na=rtpmap:111 opus/48000/2\r\na=rtcp-fb:111 transport-cc\r\na=fmtp:111 minptime=10;useinbandfec=1\r\na=rtpmap:63 red/48000/2\r\na=fmtp:63 111/111\r\na=rtpmap:103 ISAC/16000\r\na=rtpmap:104 ISAC/32000\r\na=rtpmap:9 G722/8000\r\na=rtpmap:0 PCMU/8000\r\na=rtpmap:8 PCMA/8000\r\na=rtpmap:106 CN/32000\r\na=rtpmap:105 CN/16000\r\na=rtpmap:13 CN/8000\r\na=rtpmap:110 telephone-event/48000\r\na=rtpmap:112 telephone-event/32000\r\na=rtpmap:113 telephone-event/16000\r\na=rtpmap:126 telephone-event/8000\r\na=ssrc:2757659185 cname:8nJCvH9MPijHQSGZ\r\na=ssrc:2757659185 msid:- a75c2046-2efe-4b04-aeb9-ed7beecf7871\r\nm=video 9 UDP/TLS/RTP/SAVPF 96 97 98 99 100 101 102 122 127 121 125 107 108 109 124 120 123 119 35 36 37 38 39 40 41 42 114 115 116 43\r\nc=IN IP4 0.0.0.0\r\na=rtcp:9 IN IP4 0.0.0.0\r\na=ice-ufrag:bSbi\r\na=ice-pwd:BXzujnFw/cHKF8tMgtoo/cne\r\na=ice-options:trickle\r\na=fingerprint:sha-256 CB:87:A2:17:63:29:8C:10:5F:CE:29:22:76:ED:C3:89:64:94:48:29:E0:7C:83:13:70:41:C0:5C:08:D2:69:33\r\na=setup:actpass\r\na=mid:1\r\na=extmap:14 urn:ietf:params:rtp-hdrext:toffset\r\na=extmap:2 http://www.webrtc.org/experiments/rtp-hdrext/abs-send-time\r\na=extmap:13 urn:3gpp:video-orientation\r\na=extmap:3 http://www.ietf.org/id/draft-holmer-rmcat-transport-wide-cc-extensions-01\r\na=extmap:5 http://www.webrtc.org/experiments/rtp-hdrext/playout-delay\r\na=extmap:6 http://www.webrtc.org/experiments/rtp-hdrext/video-content-type\r\na=extmap:7 http://www.webrtc.org/experiments/rtp-hdrext/video-timing\r\na=extmap:8 http://www.webrtc.org/experiments/rtp-hdrext/color-space\r\na=extmap:4 urn:ietf:params:rtp-hdrext:sdes:mid\r\na=extmap:10 urn:ietf:params:rtp-hdrext:sdes:rtp-stream-id\r\na=extmap:11 urn:ietf:params:rtp-hdrext:sdes:repaired-rtp-stream-id\r\na=recvonly\r\na=rtcp-mux\r\na=rtcp-rsize\r\na=rtpmap:96 VP8/90000\r\na=rtcp-fb:96 goog-remb\r\na=rtcp-fb:96 transport-cc\r\na=rtcp-fb:96 ccm fir\r\na=rtcp-fb:96 nack\r\na=rtcp-fb:96 nack pli\r\na=rtpmap:97 rtx/90000\r\na=fmtp:97 apt=96\r\na=rtpmap:98 VP9/90000\r\na=rtcp-fb:98 goog-remb\r\na=rtcp-fb:98 transport-cc\r\na=rtcp-fb:98 ccm fir\r\na=rtcp-fb:98 nack\r\na=rtcp-fb:98 nack pli\r\na=fmtp:98 profile-id=0\r\na=rtpmap:99 rtx/90000\r\na=fmtp:99 apt=98\r\na=rtpmap:100 VP9/90000\r\na=rtcp-fb:100 goog-remb\r\na=rtcp-fb:100 transport-cc\r\na=rtcp-fb:100 ccm fir\r\na=rtcp-fb:100 nack\r\na=rtcp-fb:100 nack pli\r\na=fmtp:100 profile-id=2\r\na=rtpmap:101 rtx/90000\r\na=fmtp:101 apt=100\r\na=rtpmap:102 VP9/90000\r\na=rtcp-fb:102 goog-remb\r\na=rtcp-fb:102 transport-cc\r\na=rtcp-fb:102 ccm fir\r\na=rtcp-fb:102 nack\r\na=rtcp-fb:102 nack pli\r\na=fmtp:102 profile-id=1\r\na=rtpmap:122 rtx/90000\r\na=fmtp:122 apt=102\r\na=rtpmap:127 H264/90000\r\na=rtcp-fb:127 goog-remb\r\na=rtcp-fb:127 transport-cc\r\na=rtcp-fb:127 ccm fir\r\na=rtcp-fb:127 nack\r\na=rtcp-fb:127 nack pli\r\na=fmtp:127 level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=42001f\r\na=rtpmap:121 rtx/90000\r\na=fmtp:121 apt=127\r\na=rtpmap:125 H264/90000\r\na=rtcp-fb:125 goog-remb\r\na=rtcp-fb:125 transport-cc\r\na=rtcp-fb:125 ccm fir\r\na=rtcp-fb:125 nack\r\na=rtcp-fb:125 nack pli\r\na=fmtp:125 level-asymmetry-allowed=1;packetization-mode=0;profile-level-id=42001f\r\na=rtpmap:107 rtx/90000\r\na=fmtp:107 apt=125\r\na=rtpmap:108 H264/90000\r\na=rtcp-fb:108 goog-remb\r\na=rtcp-fb:108 transport-cc\r\na=rtcp-fb:108 ccm fir\r\na=rtcp-fb:108 nack\r\na=rtcp-fb:108 nack pli\r\na=fmtp:108 level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=42e01f\r\na=rtpmap:109 rtx/90000\r\na=fmtp:109 apt=108\r\na=rtpmap:124 H264/90000\r\na=rtcp-fb:124 goog-remb\r\na=rtcp-fb:124 transport-cc\r\na=rtcp-fb:124 ccm fir\r\na=rtcp-fb:124 nack\r\na=rtcp-fb:124 nack pli\r\na=fmtp:124 level-asymmetry-allowed=1;packetization-mode=0;profile-level-id=42e01f\r\na=rtpmap:120 rtx/90000\r\na=fmtp:120 apt=124\r\na=rtpmap:123 H264/90000\r\na=rtcp-fb:123 goog-remb\r\na=rtcp-fb:123 transport-cc\r\na=rtcp-fb:123 ccm fir\r\na=rtcp-fb:123 nack\r\na=rtcp-fb:123 nack pli\r\na=fmtp:123 level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=4d001f\r\na=rtpmap:119 rtx/90000\r\na=fmtp:119 apt=123\r\na=rtpmap:35 H264/90000\r\na=rtcp-fb:35 goog-remb\r\na=rtcp-fb:35 transport-cc\r\na=rtcp-fb:35 ccm fir\r\na=rtcp-fb:35 nack\r\na=rtcp-fb:35 nack pli\r\na=fmtp:35 level-asymmetry-allowed=1;packetization-mode=0;profile-level-id=4d001f\r\na=rtpmap:36 rtx/90000\r\na=fmtp:36 apt=35\r\na=rtpmap:37 H264/90000\r\na=rtcp-fb:37 goog-remb\r\na=rtcp-fb:37 transport-cc\r\na=rtcp-fb:37 ccm fir\r\na=rtcp-fb:37 nack\r\na=rtcp-fb:37 nack pli\r\na=fmtp:37 level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=f4001f\r\na=rtpmap:38 rtx/90000\r\na=fmtp:38 apt=37\r\na=rtpmap:39 H264/90000\r\na=rtcp-fb:39 goog-remb\r\na=rtcp-fb:39 transport-cc\r\na=rtcp-fb:39 ccm fir\r\na=rtcp-fb:39 nack\r\na=rtcp-fb:39 nack pli\r\na=fmtp:39 level-asymmetry-allowed=1;packetization-mode=0;profile-level-id=f4001f\r\na=rtpmap:40 rtx/90000\r\na=fmtp:40 apt=39\r\na=rtpmap:41 AV1/90000\r\na=rtcp-fb:41 goog-remb\r\na=rtcp-fb:41 transport-cc\r\na=rtcp-fb:41 ccm fir\r\na=rtcp-fb:41 nack\r\na=rtcp-fb:41 nack pli\r\na=rtpmap:42 rtx/90000\r\na=fmtp:42 apt=41\r\na=rtpmap:114 red/90000\r\na=rtpmap:115 rtx/90000\r\na=fmtp:115 apt=114\r\na=rtpmap:116 ulpfec/90000\r\na=rtpmap:43 flexfec-03/90000\r\na=rtcp-fb:43 goog-remb\r\na=rtcp-fb:43 transport-cc\r\na=fmtp:43 repair-window=10000000\r\nm=application 9 UDP/DTLS/SCTP webrtc-datachannel\r\nc=IN IP4 0.0.0.0\r\na=ice-ufrag:bSbi\r\na=ice-pwd:BXzujnFw/cHKF8tMgtoo/cne\r\na=ice-options:trickle\r\na=fingerprint:sha-256 CB:87:A2:17:63:29:8C:10:5F:CE:29:22:76:ED:C3:89:64:94:48:29:E0:7C:83:13:70:41:C0:5C:08:D2:69:33\r\na=setup:actpass\r\na=mid:2\r\na=sctp-port:5000\r\na=max-message-size:262144\r\n","configuration":{"chatConfiguration":{"bytesPerSample":2,"expectedClipDurationMs":20,"format":{"codec":"opus","container":"webm"},"numChannels":1,"sampleFrequencyHz":24000},"chat":{"minVersion":1,"maxVersion":1},"control":{"minVersion":1,"maxVersion":3},"input":{"minVersion":1,"maxVersion":7},"message":{"minVersion":1,"maxVersion":1}}}"#
@@ -774,6 +778,13 @@ mod tests {
     }
 
     #[test]
+    fn deserialize_consoles_response() {
+        let data = consoles_response();
+        let json = serde_json::from_str::<ConsolesResponse>(data).unwrap();
+        println!("{:?}", json); 
+    }
+
+    #[test]
     fn deserialize_sdp_offer() {
         let data = sdp_offer_message();
         let json = serde_json::from_str::<GssvSdpOffer>(data);
@@ -822,6 +833,13 @@ mod tests {
     #[test]
     fn deserialize_sdp_response_failure() {
         let result = serde_json::from_str::<SdpResponse>(&sdp_exchange_response_failure());
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn deserialize_title_v1() {
+        let json_body = include_str!("../testdata/v1_titles.json");
+        let result = serde_json::from_str::<TitlesResponse>(json_body);
         assert!(result.is_ok());
     }
 }

@@ -9,7 +9,7 @@ use crate::api::{
 };
 use crate::error::GsError;
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub enum Platform {
     Cloud,
     Home,
@@ -38,6 +38,7 @@ impl ToString for Platform {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct GamestreamingClient {
     api: GssvApi,
     transfer_token: String,
@@ -47,7 +48,7 @@ pub struct GamestreamingClient {
 impl GamestreamingClient {
     const CONNECTION_TIMEOUT_SECS: i64 = 30;
 
-    pub async fn create(
+    pub async fn new(
         platform: Platform,
         gssv_token: &str,
         xcloud_transfer_token: &str,
@@ -69,12 +70,7 @@ impl GamestreamingClient {
             ));
         }
 
-        Ok(self
-            .api
-            .get_titles()
-            .await
-            .map_err(GsError::ApiError)?
-            .results)
+        Ok(self.api.get_titles().await.map_err(GsError::ApiError)?.results)
     }
 
     pub async fn lookup_consoles(&self) -> Result<ConsolesResponse, GsError> {
@@ -122,10 +118,8 @@ impl GamestreamingClient {
                 }
                 "ReadyToConnect" => {
                     println!("Stream is ready to connect");
-                    if let Err(connect_err) = self
-                        .api
-                        .session_connect(&session, &self.transfer_token)
-                        .await
+                    if let Err(connect_err) =
+                        self.api.session_connect(&session, &self.transfer_token).await
                     {
                         println!("Failed to connect to session");
                         return Err(connect_err.into());
@@ -149,7 +143,9 @@ impl GamestreamingClient {
                     )));
                 }
             }
-            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+
+            self.lookup_games().await?;
+            //std::thread::sleep(std::time::Duration::from_secs(1));
         }
 
         Err(GsError::Provisioning(
@@ -180,11 +176,12 @@ impl GamestreamingClient {
         session: &SessionResponse,
         sdp: &str,
     ) -> Result<SdpExchangeResponse, GsError> {
-        self.api
-            .set_sdp(session, sdp)
+        self.api.set_sdp(session, sdp)
             .await
             .map_err(GsError::ApiError)?;
-        let sdp_response = self.api.get_sdp(session).await.map_err(GsError::ApiError)?;
+        let sdp_response = self.api.get_sdp(session)
+            .await
+            .map_err(GsError::ApiError)?;
         let error_str = match &sdp_response.exchange_response.status {
             Some(status) => match status.as_ref() {
                 "success" => {
@@ -212,7 +209,16 @@ impl GamestreamingClient {
             .set_ice(session, ice_candidate_init)
             .await
             .map_err(GsError::ApiError)?;
-        self.api.get_ice(session).await.map_err(GsError::ApiError)
+        self.api.get_ice(session)
+            .await
+            .map_err(GsError::ApiError)
+    }
+
+    pub async fn keepalive(&self, session: &SessionResponse) -> Result<(), GsError> {
+        self.api.send_keepalive(session)
+            .await
+            .map_err(GsError::ApiError)?;
+        Ok(())
     }
 }
 

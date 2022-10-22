@@ -1,8 +1,11 @@
 [workspace]
+resolver = "2"
 members = [
-    "xal",
     "smartglass",
+    "gamestreaming_auth",
     "gamestreaming_native",
     "gamestreaming_webrtc",
-    "teredo"
-    ]
+    "teredo",
+    "client_gstreamer",
+    "client_sdl2"
+]

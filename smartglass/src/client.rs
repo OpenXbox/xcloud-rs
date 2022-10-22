@@ -1,27 +1,26 @@
 use super::models;
 use reqwest;
 use serde::de::DeserializeOwned;
+use xal::extensions::JsonExDeserializeMiddleware;
+use xal::extensions::SigningReqwestBuilder;
 use std::collections::HashMap;
 use std::default::Default;
 use uuid;
 use xal::cvlib::CorrelationVector;
-use xal::models as xal_models;
-use xal::request_signer;
-use xal::request_signer::SigningReqwestBuilder;
 
 type Error = Box<dyn std::error::Error>;
 type Result<T> = std::result::Result<T, Error>;
 
 pub struct SmartglassClient {
     session_id: uuid::Uuid,
-    request_signer: request_signer::RequestSigner,
+    request_signer: xal::RequestSigner,
     client: reqwest::Client,
     ms_cv: CorrelationVector,
 }
 
 impl SmartglassClient {
     pub fn new(
-        token: xal_models::response::XSTSResponse,
+        token: xal::response::XSTSToken,
         session_id: Option<uuid::Uuid>,
         user_agent: Option<String>,
     ) -> Result<Self> {
@@ -44,7 +43,7 @@ impl SmartglassClient {
 
         Ok(Self {
             session_id: session_id.unwrap_or_else(uuid::Uuid::new_v4),
-            request_signer: request_signer::RequestSigner::default(),
+            request_signer: xal::RequestSigner::default(),
             ms_cv: CorrelationVector::default(),
             client,
         })
@@ -57,8 +56,8 @@ impl SmartglassClient {
 
     pub async fn fetch_operation_status(
         &mut self,
-        operation_id: String,
-        device_id: String,
+        operation_id: &str,
+        device_id: &str,
     ) -> Result<models::OperationStatusResponse> {
         let url = "https://xccs.xboxlive.com/opStatus";
 
@@ -71,17 +70,18 @@ impl SmartglassClient {
             .get(url)
             .headers(headers)
             .header("MS-CV", self.next_cv())
-            .sign(&self.request_signer, None)?
+            .sign(&mut self.request_signer, None)
+            .await?
             .send()
             .await?
-            .json::<models::OperationStatusResponse>()
+            .json_ex::<models::OperationStatusResponse>()
             .await
             .map_err(|err| err.into())
     }
 
     pub async fn get_console_status(
         &mut self,
-        console_live_id: String,
+        console_live_id: &str,
     ) -> Result<models::SmartglassConsoleStatus> {
         let url = format!(
             "https://xccs.xboxlive.com/consoles/{live_id}",
@@ -91,7 +91,8 @@ impl SmartglassClient {
         self.client
             .get(&url)
             .header("MS-CV", self.next_cv())
-            .sign(&self.request_signer, None)?
+            .sign(&mut self.request_signer, None)
+            .await?
             .send()
             .await?
             .json::<models::SmartglassConsoleStatus>()
@@ -101,7 +102,7 @@ impl SmartglassClient {
 
     async fn fetch_list<T>(
         &mut self,
-        list_name: String,
+        list_name: &str,
         query_params: Option<HashMap<String, String>>,
     ) -> Result<T>
     where
@@ -118,7 +119,8 @@ impl SmartglassClient {
         }
         req_builder
             .header("MS-CV", self.next_cv())
-            .sign(&self.request_signer, None)?
+            .sign(&mut self.request_signer, None)
+            .await?
             .send()
             .await?
             .json::<T>()
@@ -128,28 +130,29 @@ impl SmartglassClient {
 
     async fn send_oneshot_command(
         &mut self,
-        console_live_id: String,
-        command_type: String,
-        command: String,
+        console_live_id: &str,
+        command_type: &str,
+        command: &str,
         parameters: Option<Vec<HashMap<String, String>>>,
     ) -> Result<models::CommandResponse> {
         let url = "https://xccs.xboxlive.com/commands";
 
         let json_body = models::request::OneShotCommandRequest {
             destination: "Xbox".to_owned(),
-            command_type,
-            command,
+            command_type: command_type.to_owned(),
+            command: command.to_owned(),
             session_id: self.session_id.hyphenated().to_string(),
             source_id: "com.microsoft.smartglass".to_owned(),
             parameters,
-            linked_xbox_id: console_live_id,
+            linked_xbox_id: console_live_id.to_owned(),
         };
 
         self.client
             .post(url)
             .header("MS-CV", self.next_cv())
             .json(&json_body)
-            .sign(&self.request_signer, None)?
+            .sign(&mut self.request_signer, None)
+            .await?
             .send()
             .await?
             .json::<models::CommandResponse>()
@@ -162,40 +165,40 @@ impl SmartglassClient {
         query_params.insert("queryCurrentDevice".to_owned(), "false".to_owned());
         query_params.insert("includeStorageDevices".to_owned(), "true".to_owned());
 
-        self.fetch_list("devices".to_owned(), Some(query_params))
+        self.fetch_list("devices", Some(query_params))
             .await
     }
 
     pub async fn get_storage_devices(
         &mut self,
-        device_id: String,
+        device_id: &str,
     ) -> Result<models::StorageDevicesList> {
         let mut query_params: HashMap<String, String> = HashMap::new();
-        query_params.insert("deviceId".to_owned(), device_id);
+        query_params.insert("deviceId".to_owned(), device_id.to_owned());
 
-        self.fetch_list("storageDevices".to_owned(), Some(query_params))
+        self.fetch_list("storageDevices", Some(query_params))
             .await
     }
 
     pub async fn get_installed_apps(
         &mut self,
-        device_id: String,
+        device_id: &str,
     ) -> Result<models::InstalledPackagesList> {
         let mut query_params: HashMap<String, String> = HashMap::new();
-        query_params.insert("deviceId".to_owned(), device_id);
+        query_params.insert("deviceId".to_owned(), device_id.to_owned());
 
-        self.fetch_list("installedApps".to_owned(), Some(query_params))
+        self.fetch_list("installedApps", Some(query_params))
             .await
     }
 
     pub async fn command_power_wake_up(
         &mut self,
-        console_live_id: String,
+        console_live_id: &str,
     ) -> Result<models::CommandResponse> {
         self.send_oneshot_command(
             console_live_id,
-            "Power".to_owned(),
-            "WakeUp".to_owned(),
+            "Power",
+            "WakeUp",
             None,
         )
         .await
@@ -203,12 +206,12 @@ impl SmartglassClient {
 
     pub async fn command_power_turn_off(
         &mut self,
-        console_live_id: String,
+        console_live_id: &str,
     ) -> Result<models::CommandResponse> {
         self.send_oneshot_command(
             console_live_id,
-            "Power".to_owned(),
-            "TurnOff".to_owned(),
+            "Power",
+            "TurnOff",
             None,
         )
         .await
@@ -216,12 +219,12 @@ impl SmartglassClient {
 
     pub async fn command_power_reboot(
         &mut self,
-        console_live_id: String,
+        console_live_id: &str,
     ) -> Result<models::CommandResponse> {
         self.send_oneshot_command(
             console_live_id,
-            "Power".to_owned(),
-            "Reboot".to_owned(),
+            "Power",
+            "Reboot",
             None,
         )
         .await
@@ -229,20 +232,25 @@ impl SmartglassClient {
 
     pub async fn command_audio_mute(
         &mut self,
-        console_live_id: String,
+        console_live_id: &str,
     ) -> Result<models::CommandResponse> {
-        self.send_oneshot_command(console_live_id, "Audio".to_owned(), "Mute".to_owned(), None)
-            .await
+        self.send_oneshot_command(
+            console_live_id,
+            "Audio",
+            "Mute",
+            None
+        )
+        .await
     }
 
     pub async fn command_audio_unmute(
         &mut self,
-        console_live_id: String,
+        console_live_id: &str,
     ) -> Result<models::CommandResponse> {
         self.send_oneshot_command(
             console_live_id,
-            "Audio".to_owned(),
-            "Unmute".to_owned(),
+            "Audio",
+            "Unmute",
             None,
         )
         .await
@@ -250,7 +258,7 @@ impl SmartglassClient {
 
     pub async fn command_audio_volume(
         &mut self,
-        console_live_id: String,
+        console_live_id: &str,
         direction: models::VolumeDirection,
         amount: Option<i32>,
     ) -> Result<models::CommandResponse> {
@@ -260,8 +268,8 @@ impl SmartglassClient {
 
         self.send_oneshot_command(
             console_live_id,
-            "Audio".to_owned(),
-            "Volume".to_owned(),
+            "Audio",
+            "Volume",
             Some(parameters),
         )
         .await
@@ -269,12 +277,12 @@ impl SmartglassClient {
 
     pub async fn command_config_digital_assistant_remote_control(
         &mut self,
-        console_live_id: String,
+        console_live_id: &str,
     ) -> Result<models::CommandResponse> {
         self.send_oneshot_command(
             console_live_id,
-            "Config".to_owned(),
-            "DigitalAssistantRemoteControl".to_owned(),
+            "Config",
+            "DigitalAssistantRemoteControl",
             None,
         )
         .await
@@ -282,7 +290,7 @@ impl SmartglassClient {
 
     pub async fn command_config_remote_access(
         &mut self,
-        console_live_id: String,
+        console_live_id: &str,
         enable: bool,
     ) -> Result<models::CommandResponse> {
         let mut parameters: Vec<HashMap<String, String>> = vec![HashMap::new()];
@@ -290,8 +298,8 @@ impl SmartglassClient {
 
         self.send_oneshot_command(
             console_live_id,
-            "Config".to_owned(),
-            "RemoteAccess".to_owned(),
+            "Config",
+            "RemoteAccess",
             Some(parameters),
         )
         .await
@@ -299,7 +307,7 @@ impl SmartglassClient {
 
     pub async fn command_config_allow_console_streaming(
         &mut self,
-        console_live_id: String,
+        console_live_id: &str,
         enable: bool,
     ) -> Result<models::CommandResponse> {
         let mut parameters: Vec<HashMap<String, String>> = vec![HashMap::new()];
@@ -307,8 +315,8 @@ impl SmartglassClient {
 
         self.send_oneshot_command(
             console_live_id,
-            "Config".to_owned(),
-            "AllowConsoleStreaming".to_owned(),
+            "Config",
+            "AllowConsoleStreaming",
             Some(parameters),
         )
         .await
@@ -316,12 +324,12 @@ impl SmartglassClient {
 
     pub async fn command_game_capture_gameclip(
         &mut self,
-        console_live_id: String,
+        console_live_id: &str,
     ) -> Result<models::CommandResponse> {
         self.send_oneshot_command(
             console_live_id,
-            "Game".to_owned(),
-            "CaptureGameClip".to_owned(),
+            "Game",
+            "CaptureGameClip",
             None,
         )
         .await
@@ -329,12 +337,12 @@ impl SmartglassClient {
 
     pub async fn command_game_capture_screenshot(
         &mut self,
-        console_live_id: String,
+        console_live_id: &str,
     ) -> Result<models::CommandResponse> {
         self.send_oneshot_command(
             console_live_id,
-            "Game".to_owned(),
-            "CaptureScreenshot".to_owned(),
+            "Game",
+            "CaptureScreenshot",
             None,
         )
         .await
@@ -342,12 +350,12 @@ impl SmartglassClient {
 
     pub async fn command_game_invite_party_to_game(
         &mut self,
-        console_live_id: String,
+        console_live_id: &str,
     ) -> Result<models::CommandResponse> {
         self.send_oneshot_command(
             console_live_id,
-            "Game".to_owned(),
-            "InvitePartyToGame".to_owned(),
+            "Game",
+            "InvitePartyToGame",
             None,
         )
         .await
@@ -355,12 +363,12 @@ impl SmartglassClient {
 
     pub async fn command_game_invite_to_party(
         &mut self,
-        console_live_id: String,
+        console_live_id: &str,
     ) -> Result<models::CommandResponse> {
         self.send_oneshot_command(
             console_live_id,
-            "Game".to_owned(),
-            "InviteToParty".to_owned(),
+            "Game",
+            "InviteToParty",
             None,
         )
         .await
@@ -368,12 +376,12 @@ impl SmartglassClient {
 
     pub async fn command_game_kick_from_party(
         &mut self,
-        console_live_id: String,
+        console_live_id: &str,
     ) -> Result<models::CommandResponse> {
         self.send_oneshot_command(
             console_live_id,
-            "Game".to_owned(),
-            "KickFromParty".to_owned(),
+            "Game",
+            "KickFromParty",
             None,
         )
         .await
@@ -381,12 +389,12 @@ impl SmartglassClient {
 
     pub async fn command_game_leave_party(
         &mut self,
-        console_live_id: String,
+        console_live_id: &str,
     ) -> Result<models::CommandResponse> {
         self.send_oneshot_command(
             console_live_id,
-            "Game".to_owned(),
-            "LeaveParty".to_owned(),
+            "Game",
+            "LeaveParty",
             None,
         )
         .await
@@ -394,12 +402,12 @@ impl SmartglassClient {
 
     pub async fn command_game_set_online_status(
         &mut self,
-        console_live_id: String,
+        console_live_id: &str,
     ) -> Result<models::CommandResponse> {
         self.send_oneshot_command(
             console_live_id,
-            "Game".to_owned(),
-            "SetOnlineStatus".to_owned(),
+            "Game",
+            "SetOnlineStatus",
             None,
         )
         .await
@@ -407,12 +415,12 @@ impl SmartglassClient {
 
     pub async fn command_game_start_a_party(
         &mut self,
-        console_live_id: String,
+        console_live_id: &str,
     ) -> Result<models::CommandResponse> {
         self.send_oneshot_command(
             console_live_id,
-            "Game".to_owned(),
-            "StartAParty".to_owned(),
+            "Game",
+            "StartAParty",
             None,
         )
         .await
@@ -420,12 +428,12 @@ impl SmartglassClient {
 
     pub async fn command_game_start_broadcasting(
         &mut self,
-        console_live_id: String,
+        console_live_id: &str,
     ) -> Result<models::CommandResponse> {
         self.send_oneshot_command(
             console_live_id,
-            "Game".to_owned(),
-            "StartBroadcasting".to_owned(),
+            "Game",
+            "StartBroadcasting",
             None,
         )
         .await
@@ -433,12 +441,12 @@ impl SmartglassClient {
 
     pub async fn command_game_stop_broadcasting(
         &mut self,
-        console_live_id: String,
+        console_live_id: &str,
     ) -> Result<models::CommandResponse> {
         self.send_oneshot_command(
             console_live_id,
-            "Game".to_owned(),
-            "StopBroadcasting".to_owned(),
+            "Game",
+            "StopBroadcasting",
             None,
         )
         .await
@@ -446,12 +454,12 @@ impl SmartglassClient {
 
     pub async fn command_gamestreaming_start_management_service(
         &mut self,
-        console_live_id: String,
+        console_live_id: &str,
     ) -> Result<models::CommandResponse> {
         self.send_oneshot_command(
             console_live_id,
-            "GameStreaming".to_owned(),
-            "StartStreamingManagementService".to_owned(),
+            "GameStreaming",
+            "StartStreamingManagementService",
             None,
         )
         .await
@@ -459,12 +467,12 @@ impl SmartglassClient {
 
     pub async fn command_gamestreaming_stop_streaming(
         &mut self,
-        console_live_id: String,
+        console_live_id: &str,
     ) -> Result<models::CommandResponse> {
         self.send_oneshot_command(
             console_live_id,
-            "GameStreaming".to_owned(),
-            "StopStreaming".to_owned(),
+            "GameStreaming",
+            "StopStreaming",
             None,
         )
         .await
@@ -472,12 +480,12 @@ impl SmartglassClient {
 
     pub async fn command_marketplace_redeem_code(
         &mut self,
-        console_live_id: String,
+        console_live_id: &str,
     ) -> Result<models::CommandResponse> {
         self.send_oneshot_command(
             console_live_id,
-            "Marketplace".to_owned(),
-            "RedeemCode".to_owned(),
+            "Marketplace",
+            "RedeemCode",
             None,
         )
         .await
@@ -485,12 +493,12 @@ impl SmartglassClient {
 
     pub async fn command_marketplace_search(
         &mut self,
-        console_live_id: String,
+        console_live_id: &str,
     ) -> Result<models::CommandResponse> {
         self.send_oneshot_command(
             console_live_id,
-            "Marketplace".to_owned(),
-            "Search".to_owned(),
+            "Marketplace",
+            "Search",
             None,
         )
         .await
@@ -498,12 +506,12 @@ impl SmartglassClient {
 
     pub async fn command_marketplace_search_store(
         &mut self,
-        console_live_id: String,
+        console_live_id: &str,
     ) -> Result<models::CommandResponse> {
         self.send_oneshot_command(
             console_live_id,
-            "Marketplace".to_owned(),
-            "SearchTheStore".to_owned(),
+            "Marketplace",
+            "SearchTheStore",
             None,
         )
         .await
@@ -511,12 +519,12 @@ impl SmartglassClient {
 
     pub async fn command_marketplace_show_title(
         &mut self,
-        console_live_id: String,
+        console_live_id: &str,
     ) -> Result<models::CommandResponse> {
         self.send_oneshot_command(
             console_live_id,
-            "Marketplace".to_owned(),
-            "ShowTitle".to_owned(),
+            "Marketplace",
+            "ShowTitle",
             None,
         )
         .await
@@ -524,13 +532,13 @@ impl SmartglassClient {
 
     pub async fn command_media_command(
         &mut self,
-        console_live_id: String,
+        console_live_id: &str,
         media_command: models::MediaCommand,
     ) -> Result<models::CommandResponse> {
         self.send_oneshot_command(
             console_live_id,
-            "Media".to_owned(),
-            media_command.to_string(),
+            "Media",
+            &media_command.to_string(),
             None,
         )
         .await
@@ -538,12 +546,12 @@ impl SmartglassClient {
 
     pub async fn command_shell_activate_app_with_uri(
         &mut self,
-        console_live_id: String,
+        console_live_id: &str,
     ) -> Result<models::CommandResponse> {
         self.send_oneshot_command(
             console_live_id,
-            "Shell".to_owned(),
-            "ActivateApplicationWithUri".to_owned(),
+            "Shell",
+            "ActivateApplicationWithUri",
             None,
         )
         .await
@@ -551,12 +559,12 @@ impl SmartglassClient {
 
     pub async fn command_shell_activate_app_with_aumid(
         &mut self,
-        console_live_id: String,
+        console_live_id: &str,
     ) -> Result<models::CommandResponse> {
         self.send_oneshot_command(
             console_live_id,
-            "Shell".to_owned(),
-            "ActivateApplicationWithAumid".to_owned(),
+            "Shell",
+            "ActivateApplicationWithAumid",
             None,
         )
         .await
@@ -564,7 +572,7 @@ impl SmartglassClient {
 
     pub async fn command_shell_activate_app_with_onestore_product_id(
         &mut self,
-        console_live_id: String,
+        console_live_id: &str,
         one_store_product_id: String,
     ) -> Result<models::CommandResponse> {
         let mut parameters: Vec<HashMap<String, String>> = vec![HashMap::new()];
@@ -572,8 +580,8 @@ impl SmartglassClient {
 
         self.send_oneshot_command(
             console_live_id,
-            "Shell".to_owned(),
-            "ActivationApplicationWithOneStoreProductId".to_owned(),
+            "Shell",
+            "ActivationApplicationWithOneStoreProductId",
             Some(parameters),
         )
         .await
@@ -581,12 +589,12 @@ impl SmartglassClient {
 
     pub async fn command_shell_allow_remote_management(
         &mut self,
-        console_live_id: String,
+        console_live_id: &str,
     ) -> Result<models::CommandResponse> {
         self.send_oneshot_command(
             console_live_id,
-            "Shell".to_owned(),
-            "AllowRemoteManagement".to_owned(),
+            "Shell",
+            "AllowRemoteManagement",
             None,
         )
         .await
@@ -594,12 +602,12 @@ impl SmartglassClient {
 
     pub async fn command_shell_change_view(
         &mut self,
-        console_live_id: String,
+        console_live_id: &str,
     ) -> Result<models::CommandResponse> {
         self.send_oneshot_command(
             console_live_id,
-            "Shell".to_owned(),
-            "ChangeView".to_owned(),
+            "Shell",
+            "ChangeView",
             None,
         )
         .await
@@ -607,12 +615,12 @@ impl SmartglassClient {
 
     pub async fn command_shell_check_for_package_updates(
         &mut self,
-        console_live_id: String,
+        console_live_id: &str,
     ) -> Result<models::CommandResponse> {
         self.send_oneshot_command(
             console_live_id,
-            "Shell".to_owned(),
-            "CheckForPackageUpdates".to_owned(),
+            "Shell",
+            "CheckForPackageUpdates",
             None,
         )
         .await
@@ -620,12 +628,12 @@ impl SmartglassClient {
 
     pub async fn command_shell_copy_packages(
         &mut self,
-        console_live_id: String,
+        console_live_id: &str,
     ) -> Result<models::CommandResponse> {
         self.send_oneshot_command(
             console_live_id,
-            "Shell".to_owned(),
-            "CopyPackages".to_owned(),
+            "Shell",
+            "CopyPackages",
             None,
         )
         .await
@@ -633,12 +641,12 @@ impl SmartglassClient {
 
     pub async fn command_shell_move_packages(
         &mut self,
-        console_live_id: String,
+        console_live_id: &str,
     ) -> Result<models::CommandResponse> {
         self.send_oneshot_command(
             console_live_id,
-            "Shell".to_owned(),
-            "MovePackages".to_owned(),
+            "Shell",
+            "MovePackages",
             None,
         )
         .await
@@ -646,7 +654,7 @@ impl SmartglassClient {
 
     pub async fn command_shell_install_packages(
         &mut self,
-        console_live_id: String,
+        console_live_id: &str,
         big_cat_ids: Vec<String>,
     ) -> Result<models::CommandResponse> {
         let mut parameters: Vec<HashMap<String, String>> = vec![HashMap::new()];
@@ -654,8 +662,8 @@ impl SmartglassClient {
 
         self.send_oneshot_command(
             console_live_id,
-            "Shell".to_owned(),
-            "InstallPackages".to_owned(),
+            "Shell",
+            "InstallPackages",
             Some(parameters),
         )
         .await
@@ -663,16 +671,16 @@ impl SmartglassClient {
 
     pub async fn command_shell_uninstall_package(
         &mut self,
-        console_live_id: String,
-        instance_id: String,
+        console_live_id: &str,
+        instance_id: &str,
     ) -> Result<models::CommandResponse> {
         let mut parameters: Vec<HashMap<String, String>> = vec![HashMap::new()];
-        parameters[0].insert("instanceId".to_owned(), instance_id);
+        parameters[0].insert("instanceId".to_owned(), instance_id.to_owned());
 
         self.send_oneshot_command(
             console_live_id,
-            "Shell".to_owned(),
-            "UninstallPackage".to_owned(),
+            "Shell",
+            "UninstallPackage",
             Some(parameters),
         )
         .await
@@ -680,12 +688,12 @@ impl SmartglassClient {
 
     pub async fn command_shell_update_packages(
         &mut self,
-        console_live_id: String,
+        console_live_id: &str,
     ) -> Result<models::CommandResponse> {
         self.send_oneshot_command(
             console_live_id,
-            "Shell".to_owned(),
-            "UpdatePackages".to_owned(),
+            "Shell",
+            "UpdatePackages",
             None,
         )
         .await
@@ -693,12 +701,12 @@ impl SmartglassClient {
 
     pub async fn command_shell_eject_disk(
         &mut self,
-        console_live_id: String,
+        console_live_id: &str,
     ) -> Result<models::CommandResponse> {
         self.send_oneshot_command(
             console_live_id,
-            "Shell".to_owned(),
-            "EjectDisk".to_owned(),
+            "Shell",
+            "EjectDisk",
             None,
         )
         .await
@@ -706,12 +714,12 @@ impl SmartglassClient {
 
     pub async fn command_shell_go_back(
         &mut self,
-        console_live_id: String,
+        console_live_id: &str,
     ) -> Result<models::CommandResponse> {
         self.send_oneshot_command(
             console_live_id,
-            "Shell".to_owned(),
-            "GoBack".to_owned(),
+            "Shell",
+            "GoBack",
             None,
         )
         .await
@@ -719,12 +727,12 @@ impl SmartglassClient {
 
     pub async fn command_shell_go_home(
         &mut self,
-        console_live_id: String,
+        console_live_id: &str,
     ) -> Result<models::CommandResponse> {
         self.send_oneshot_command(
             console_live_id,
-            "Shell".to_owned(),
-            "GoHome".to_owned(),
+            "Shell",
+            "GoHome",
             None,
         )
         .await
@@ -732,12 +740,12 @@ impl SmartglassClient {
 
     pub async fn command_shell_pair_controller(
         &mut self,
-        console_live_id: String,
+        console_live_id: &str,
     ) -> Result<models::CommandResponse> {
         self.send_oneshot_command(
             console_live_id,
-            "Shell".to_owned(),
-            "PairController".to_owned(),
+            "Shell",
+            "PairController",
             None,
         )
         .await
@@ -745,12 +753,12 @@ impl SmartglassClient {
 
     pub async fn command_shell_send_text_message(
         &mut self,
-        console_live_id: String,
+        console_live_id: &str,
     ) -> Result<models::CommandResponse> {
         self.send_oneshot_command(
             console_live_id,
-            "Shell".to_owned(),
-            "SendTextMessage".to_owned(),
+            "Shell",
+            "SendTextMessage",
             None,
         )
         .await
@@ -758,12 +766,12 @@ impl SmartglassClient {
 
     pub async fn command_shell_show_guide_tab(
         &mut self,
-        console_live_id: String,
+        console_live_id: &str,
     ) -> Result<models::CommandResponse> {
         self.send_oneshot_command(
             console_live_id,
-            "Shell".to_owned(),
-            "ShowGuideTab".to_owned(),
+            "Shell",
+            "ShowGuideTab",
             None,
         )
         .await
@@ -771,12 +779,12 @@ impl SmartglassClient {
 
     pub async fn command_shell_sign_in(
         &mut self,
-        console_live_id: String,
+        console_live_id: &str,
     ) -> Result<models::CommandResponse> {
         self.send_oneshot_command(
             console_live_id,
-            "Shell".to_owned(),
-            "SignIn".to_owned(),
+            "Shell",
+            "SignIn",
             None,
         )
         .await
@@ -784,12 +792,12 @@ impl SmartglassClient {
 
     pub async fn command_shell_sign_out(
         &mut self,
-        console_live_id: String,
+        console_live_id: &str,
     ) -> Result<models::CommandResponse> {
         self.send_oneshot_command(
             console_live_id,
-            "Shell".to_owned(),
-            "SignOut".to_owned(),
+            "Shell",
+            "SignOut",
             None,
         )
         .await
@@ -797,12 +805,12 @@ impl SmartglassClient {
 
     pub async fn command_shell_launch_game(
         &mut self,
-        console_live_id: String,
+        console_live_id: &str,
     ) -> Result<models::CommandResponse> {
         self.send_oneshot_command(
             console_live_id,
-            "Shell".to_owned(),
-            "LaunchGame".to_owned(),
+            "Shell",
+            "LaunchGame",
             None,
         )
         .await
@@ -810,12 +818,12 @@ impl SmartglassClient {
 
     pub async fn command_shell_terminate_application(
         &mut self,
-        console_live_id: String,
+        console_live_id: &str,
     ) -> Result<models::CommandResponse> {
         self.send_oneshot_command(
             console_live_id,
-            "Shell".to_owned(),
-            "TerminateApplication".to_owned(),
+            "Shell",
+            "TerminateApplication",
             None,
         )
         .await
@@ -823,7 +831,7 @@ impl SmartglassClient {
 
     pub async fn command_shell_keyinput(
         &mut self,
-        console_live_id: String,
+        console_live_id: &str,
         key_type: models::InputKeyType,
     ) -> Result<models::CommandResponse> {
         let mut parameters: Vec<HashMap<String, String>> = vec![HashMap::new()];
@@ -831,8 +839,8 @@ impl SmartglassClient {
 
         self.send_oneshot_command(
             console_live_id,
-            "Shell".to_owned(),
-            "InjectKey".to_owned(),
+            "Shell",
+            "InjectKey",
             Some(parameters),
         )
         .await
@@ -840,7 +848,7 @@ impl SmartglassClient {
 
     pub async fn command_shell_textinput(
         &mut self,
-        console_live_id: String,
+        console_live_id: &str,
         text_input: String,
     ) -> Result<models::CommandResponse> {
         let mut parameters: Vec<HashMap<String, String>> = vec![HashMap::new()];
@@ -848,8 +856,8 @@ impl SmartglassClient {
 
         self.send_oneshot_command(
             console_live_id,
-            "Shell".to_owned(),
-            "InjectString".to_owned(),
+            "Shell",
+            "InjectString",
             Some(parameters),
         )
         .await
@@ -857,12 +865,12 @@ impl SmartglassClient {
 
     pub async fn command_tv_show_guide(
         &mut self,
-        console_live_id: String,
+        console_live_id: &str,
     ) -> Result<models::CommandResponse> {
         self.send_oneshot_command(
             console_live_id,
-            "TV".to_owned(),
-            "ShowGuide".to_owned(),
+            "TV",
+            "ShowGuide",
             None,
         )
         .await
@@ -870,12 +878,12 @@ impl SmartglassClient {
 
     pub async fn command_tv_watch_channel(
         &mut self,
-        console_live_id: String,
+        console_live_id: &str,
     ) -> Result<models::CommandResponse> {
         self.send_oneshot_command(
             console_live_id,
-            "TV".to_owned(),
-            "WatchChannel".to_owned(),
+            "TV",
+            "WatchChannel",
             None,
         )
         .await
