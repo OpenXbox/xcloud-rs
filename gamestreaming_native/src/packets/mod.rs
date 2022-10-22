@@ -44,8 +44,8 @@ pub enum ControlProtocolMessageOpCode {
 }
 
 pub fn parse_rtp_packet(packet: &rtp::packet::Packet) {
-    let (_, payload_type) = PayloadType::from_bytes((&packet.payload[..1], 0))
-        .expect("Failed to parse PayloadType");
+    let (_, payload_type) =
+        PayloadType::from_bytes((&packet.payload[..1], 0)).expect("Failed to parse PayloadType");
 
     match payload_type {
         /*
