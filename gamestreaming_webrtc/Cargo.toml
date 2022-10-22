@@ -23,11 +23,15 @@ webrtc = { version = "0.5.1", optional = true }
 lazy_static = { version = "1.4", optional = true }
 anyhow = { version = "1.0", optional = true }
 
+# gstreamer client
+gstreamer = { version = "0.18.8", optional = true }
+
 [dev-dependencies]
 xal = { path = "../xal"}
 
 [features]
 webrtc-rs = ["dep:webrtc", "dep:lazy_static", "dep:anyhow"]
+gstreamer = ["dep:gstreamer"]
 xal = ["dep:xal"]
 
 [[example]]
@@ -36,3 +40,7 @@ name = "gssv-api"
 [[bin]]
 name = "client-webrtc"
 required-features = ["xal", "webrtc-rs"]
+
+[[bin]]
+name = "client-gstreamer"
+required-features = ["xal", "gstreamer"]
