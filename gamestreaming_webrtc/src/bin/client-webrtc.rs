@@ -2,11 +2,13 @@ use anyhow::Result;
 use gamestreaming_webrtc::api::{IceCandidate, SessionResponse};
 use std::fs::File;
 use std::sync::Arc;
+use std::collections::HashMap;
 use tokio::sync::{Mutex, Notify};
 use tokio::time::Duration;
 use webrtc::api::interceptor_registry::register_default_interceptors;
 use webrtc::api::media_engine::{MediaEngine, MIME_TYPE_H264, MIME_TYPE_OPUS};
 use webrtc::api::APIBuilder;
+use webrtc::data_channel::RTCDataChannel;
 use webrtc::data_channel::data_channel_init::RTCDataChannelInit;
 use webrtc::data_channel::data_channel_message::DataChannelMessage;
 use webrtc::ice_transport::ice_candidate::{RTCIceCandidate, RTCIceCandidateInit};
@@ -32,97 +34,18 @@ use webrtc::track::track_remote::TrackRemote;
 use gamestreaming_webrtc::{GamestreamingClient, Platform};
 use xal::utils::TokenStore;
 
-const TOKENS_FILEPATH: &str = "tokens.json";
-
-pub trait GssvChannel {
-    fn start(&self);
-    fn on_open(&self);
-    fn on_close(&self);
-    fn on_message(&self);
-}
-
-struct ControlChannel;
-
-impl GssvChannel for ControlChannel {
-    fn start(&self) {
-        todo!()
-    }
-
-    fn on_open(&self) {
-        todo!()
-    }
-
-    fn on_close(&self) {
-        todo!()
-    }
-
-    fn on_message(&self) {
-        todo!()
-    }
-}
-
-struct InputChannel;
-
-impl GssvChannel for InputChannel {
-    fn start(&self) {
-        todo!()
-    }
-
-    fn on_open(&self) {
-        todo!()
-    }
-
-    fn on_close(&self) {
-        todo!()
-    }
-
-    fn on_message(&self) {
-        todo!()
-    }
-}
-
-struct MessageChannel;
-
-impl GssvChannel for MessageChannel {
-    fn start(&self) {
-        todo!()
-    }
-
-    fn on_open(&self) {
-        todo!()
-    }
-
-    fn on_close(&self) {
-        todo!()
-    }
-
-    fn on_message(&self) {
-        todo!()
-    }
-}
-
-struct ChatChannel;
-
-impl GssvChannel for ChatChannel {
-    fn start(&self) {
-        todo!()
-    }
-
-    fn on_open(&self) {
-        todo!()
-    }
-
-    fn on_close(&self) {
-        todo!()
-    }
-
-    fn on_message(&self) {
-        todo!()
-    }
-}
-
 #[macro_use]
 extern crate lazy_static;
+
+const TOKENS_FILEPATH: &str = "tokens.json";
+
+#[derive(Debug, Default, Clone, Copy, Eq, PartialEq)]
+struct DataChannelParams {
+    id: i32,
+    protocol: &'static str,
+    is_ordered: Option<bool>,
+}
+
 
 lazy_static! {
     static ref PEER_CONNECTION_MUTEX: Arc<Mutex<Option<Arc<RTCPeerConnection>>>> =
@@ -166,36 +89,7 @@ async fn save_to_disk(
     }
 }
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let ts = match TokenStore::load(TOKENS_FILEPATH) {
-        Ok(ts) => ts,
-        Err(err) => {
-            println!("Failed to load tokens!");
-            return Err(err);
-        }
-    };
-
-    let xcloud = GamestreamingClient::create(
-        Platform::Cloud,
-        &ts.gssv_token.token_data.token,
-        &ts.xcloud_transfer_token.lpt,
-    )
-    .await?;
-
-    let session = match xcloud.lookup_games().await?.first() {
-        Some(title) => {
-            println!("Starting title: {:?}", title);
-            let session = xcloud.start_stream_xcloud(&title.title_id).await?;
-            println!("Session started successfully: {:?}", session);
-
-            session
-        }
-        None => {
-            return Err("No titles received from API".into());
-        }
-    };
-
+async fn create_peer_connection() -> Result<RTCPeerConnection, webrtc::Error> {
     // Prepare the configuration
     let config = RTCConfiguration {
         ice_servers: vec![RTCIceServer {
@@ -250,7 +144,45 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .build();
 
     // Create a new RTCPeerConnection
-    let peer_connection = Arc::new(api.new_peer_connection(config).await?);
+    api.new_peer_connection(config).await
+}
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // XCloud part
+
+    let ts = match TokenStore::load(TOKENS_FILEPATH) {
+        Ok(ts) => ts,
+        Err(err) => {
+            println!("Failed to load tokens!");
+            return Err(err);
+        }
+    };
+
+    let xcloud = GamestreamingClient::create(
+        Platform::Cloud,
+        &ts.gssv_token.token_data.token,
+        &ts.xcloud_transfer_token.lpt,
+    )
+    .await?;
+
+    let session = match xcloud.lookup_games().await?.first() {
+        Some(title) => {
+            println!("Starting title: {:?}", title);
+            let session = xcloud.start_stream_xcloud(&title.title_id).await?;
+            println!("Session started successfully: {:?}", session);
+
+            session
+        }
+        None => {
+            return Err("No titles received from API".into());
+        }
+    };
+
+    // WebRTC part
+
+    // Create a new RTCPeerConnection
+    let peer_connection = Arc::new(create_peer_connection().await?);
 
     // When an ICE candidate is available send to the other Pion instance
     // the other Pion instance will add this candidate by calling AddICECandidate
@@ -270,13 +202,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         if desc.is_none() {
                             // Candidate pending
                             println!("Candidate pending: {}", c);
-                            let mut cs = pending_candidates3.lock().await;
-                            cs.push(c);
+                            let mut cs_pending = pending_candidates3.lock().await;
+                            cs_pending.push(c);
                         } else {
                             // Candidate ready
                             println!("Candidate ready: {}", c);
-                            let mut cs = candidates2.lock().await;
-                            cs.push(c);
+                            let mut cs_ready = candidates2.lock().await;
+                            cs_ready.push(c);
                         }
                     }
                 }
@@ -284,76 +216,30 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }))
         .await;
 
-    /*
-    'chat': {
-        id: 6,
-        protocol: 'chatV1',
-    },
-    */
-    let _chat_channel = ChatChannel {};
-    let chat_channel = peer_connection
+    let channel_params: HashMap<String, DataChannelParams> = [
+        ("input".into(), DataChannelParams { id: 3, protocol: "1.0".into(), is_ordered: Some(true) }),
+        ("control".into(), DataChannelParams { id: 4, protocol: "controlV1".into(), is_ordered: None }),
+        ("message".into(), DataChannelParams { id: 5, protocol: "messageV1".into(), is_ordered: None }),
+        ("chat".into(), DataChannelParams { id: 6, protocol: "chatV1".into(), is_ordered: None }),
+
+    ].into();
+
+    let mut channel_defs: HashMap<String, Arc<RTCDataChannel>> = HashMap::new();
+    // Create channels and store in HashMap
+    for (name, params) in channel_params.into_iter() {
+        let chan = peer_connection
         .create_data_channel(
-            "chat",
+            &name,
             Some(RTCDataChannelInit {
-                protocol: Some("chatV1".to_owned()),
+                ordered: params.is_ordered,
+                protocol: Some(params.protocol.to_owned()),
                 ..Default::default()
             }),
         )
         .await?;
 
-    /*
-        'control': {
-            id: 4,
-            protocol: 'controlV1',
-        },
-    */
-
-    let _control_channel = ControlChannel {};
-    let control_channel = peer_connection
-        .create_data_channel(
-            "control",
-            Some(RTCDataChannelInit {
-                protocol: Some("controlV1".to_owned()),
-                ..Default::default()
-            }),
-        )
-        .await?;
-
-    /*
-        'input': {
-            id: 3,
-            ordered: true,
-            protocol: '1.0',
-        },
-    */
-    let _input_channel = InputChannel {};
-    let input_channel = peer_connection
-        .create_data_channel(
-            "input",
-            Some(RTCDataChannelInit {
-                ordered: Some(true),
-                protocol: Some("1.0".to_owned()),
-                ..Default::default()
-            }),
-        )
-        .await?;
-
-    /*
-    'message': {
-        id: 5,
-        protocol: 'messageV1',
-    },
-    */
-    let _message_channel = MessageChannel {};
-    let message_channel = peer_connection
-        .create_data_channel(
-            "message",
-            Some(RTCDataChannelInit {
-                protocol: Some("messageV1".to_owned()),
-                ..Default::default()
-            }),
-        )
-        .await?;
+        channel_defs.insert(name, chan);
+    }
 
     // Allow us to receive 1 audio track, and 1 video track
     peer_connection
@@ -395,110 +281,51 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }))
         .await;
 
-    /* KEEPME: Reference
-    // Register channel opening handling
-    let d1 = Arc::clone(&data_channel);
-    data_channel.on_open(Box::new(move || {
-        println!("Data channel '{}'-'{}' open. Random messages will now be sent to any connected DataChannels every 5 seconds", d1.label(), d1.id());
+    // Register channel opening / on message handling
 
-        let d2 = Arc::clone(&d1);
-        Box::pin(async move {
-            let mut result = Result::<usize, webrtc::Error>::Ok(0);
-            while result.is_ok() {
-                let timeout = tokio::time::sleep(Duration::from_secs(5));
-                tokio::pin!(timeout);
-
-                tokio::select! {
-                    _ = timeout.as_mut() =>{
-                        let message = math_rand_alpha(15);
-                        println!("Sending '{}'", message);
-                        result = d2.send_text(message).await.map_err(Into::into);
+    for (name, channel) in channel_defs.into_iter() {
+        let d1 = Arc::clone(&channel);
+        channel.on_open(Box::new(move || {
+            println!("Data channel '{}'-'{}' open", d1.label(), d1.id());
+    
+            let d2 = Arc::clone(&d1);
+            Box::pin(async move {
+                let mut result = Result::<usize, webrtc::Error>::Ok(0);
+                while result.is_ok() {
+                    let timeout = tokio::time::sleep(Duration::from_secs(5));
+                    tokio::pin!(timeout);
+    
+                    tokio::select! {
+                        _ = timeout.as_mut() =>{
+                            /*
+                            From example code - Sending random strings over datachannel
+                            let message = math_rand_alpha(15);
+                            println!("Sending '{}'", message);
+                            result = d2.send_text(message).await.map_err(Into::into);
+                            */
+                        }
+                    };
+                }
+            })
+        })).await;
+    
+        let message_label = name.clone();
+        channel
+            .on_message(Box::new(move |msg: DataChannelMessage| {
+                let msg_str = match String::from_utf8(msg.data.to_vec()) {
+                    Ok(str) => str,
+                    _ => {
+                        format!("Binary={:?}", msg.data)
                     }
                 };
-            }
-        })
-    })).await;
-
-    // Register text message handling
-    let chat_label = chat_channel.label().to_owned();
-    chat_channel
-        .on_message(Box::new(move |msg: DataChannelMessage| {
-            let msg = match String::from_utf8(msg.data.to_vec()) {
-                Ok(str) => {
-                    str
-                },
-                _ => {
-                    format!("Binary={:?}", msg.data)
-                }
-            };
-            println!("Message from DataChannel '{}': '{}'", chat_label, msg_str);
-            Box::pin(async {})
-        }))
-        .await;
-    */
-
-    // Register text message handling
-    let chat_label = chat_channel.label().to_owned();
-    chat_channel
-        .on_message(Box::new(move |msg: DataChannelMessage| {
-            let msg_str = match String::from_utf8(msg.data.to_vec()) {
-                Ok(str) => str,
-                _ => {
-                    format!("Binary={:?}", msg.data)
-                }
-            };
-            println!("Message from DataChannel '{}': '{}'", chat_label, msg_str);
-            Box::pin(async {})
-        }))
-        .await;
-
-    let control_label = control_channel.label().to_owned();
-    control_channel
-        .on_message(Box::new(move |msg: DataChannelMessage| {
-            let msg_str = match String::from_utf8(msg.data.to_vec()) {
-                Ok(str) => str,
-                _ => {
-                    format!("Binary={:?}", msg.data)
-                }
-            };
-            println!(
-                "Message from DataChannel '{}': '{}'",
-                control_label, msg_str
-            );
-            Box::pin(async {})
-        }))
-        .await;
-
-    let input_label = input_channel.label().to_owned();
-    input_channel
-        .on_message(Box::new(move |msg: DataChannelMessage| {
-            let msg_str = match String::from_utf8(msg.data.to_vec()) {
-                Ok(str) => str,
-                _ => {
-                    format!("Binary={:?}", msg.data)
-                }
-            };
-            println!("Message from DataChannel '{}': '{}'", input_label, msg_str);
-            Box::pin(async {})
-        }))
-        .await;
-
-    let message_label = message_channel.label().to_owned();
-    message_channel
-        .on_message(Box::new(move |msg: DataChannelMessage| {
-            let msg_str = match String::from_utf8(msg.data.to_vec()) {
-                Ok(str) => str,
-                _ => {
-                    format!("Binary={:?}", msg.data)
-                }
-            };
-            println!(
-                "Message from DataChannel '{}': '{}'",
-                message_label, msg_str
-            );
-            Box::pin(async {})
-        }))
-        .await;
+                println!(
+                    "Message from DataChannel '{}': '{}'",
+                    message_label, msg_str
+                );
+                Box::pin(async {})
+            }))
+            .await;
+    }
 
     let (video_file, audio_file) = ("video.mkv", "audio.ogg");
 
@@ -571,6 +398,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Note: this will start the gathering of ICE candidates
     peer_connection.set_local_description(offer).await?;
 
+    // Xcloud
     let sdp_response = xcloud.exchange_sdp(&session, &sdp_offer_string).await?;
     println!("SDP Response {:?}", sdp_response);
 
@@ -604,6 +432,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         };
         candidates_ready.push(r);
     }
+
+    // Xcloud
     let ice_response = xcloud.exchange_ice(&session, candidates_ready).await?;
     println!("ICE Response {:?}", ice_response);
 
