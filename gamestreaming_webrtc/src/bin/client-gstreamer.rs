@@ -1,7 +1,7 @@
-use std::{fs::File, io::Write};
+use std::{fs::File, io::Write, str::FromStr, sync::Mutex};
 
-use gamestreaming_webrtc::{GamestreamingClient, Platform, api::SessionResponse};
-use gst_webrtc::{ffi::{GstWebRTCRTPTransceiver, GstWebRTCDataChannel}, glib, gst::StructureRef, WebRTCSessionDescription, gst_sdp::SDPMessage};
+use gamestreaming_webrtc::{GamestreamingClient, Platform, api::{SessionResponse, IceCandidate}};
+use gst_webrtc::{ffi::{GstWebRTCRTPTransceiver, GstWebRTCDataChannel, GstWebRTCBundlePolicy}, glib, gst::StructureRef, WebRTCSessionDescription, gst_sdp::SDPMessage, WebRTCBundlePolicy, WebRTCICETransportPolicy};
 use gstreamer_webrtc as gst_webrtc;
 use gstreamer_webrtc::gst;
 use gst::{prelude::*, ElementFactory};
@@ -65,48 +65,74 @@ where
 }
 
 fn on_offer_created(reply: &StructureRef, webrtc: gst::Element, xcloud: GamestreamingClient, session: &SessionResponse) {
-    dbg!("create-offer callback");
-    dbg!("reply", reply);
+    println!("create-offer callback");
+    
     let offer = reply
         .get::<gst_webrtc::WebRTCSessionDescription>("offer")
         .expect("Invalid argument");
 
-    let sdp_text = offer.sdp().as_text().unwrap();
-    use std::os::unix::io::FromRawFd;
-    unsafe {
-        let mut stdout = File::from_raw_fd(1);
-        stdout.write(sdp_text.as_bytes());
-    }
+    let sdp_text = offer.sdp().as_text().expect("Failed to get SDP text");
+    dbg!(&sdp_text);
 
-    dbg!("offer {}", &sdp_text);
+
     webrtc
         .emit_by_name::<()>("set-local-description", &[&offer, &None::<gst::Promise>]);
 
-    let sdp_response = xcloud.exchange_sdp(session, &sdp_text).unwrap();
-    let sdp_response_text = sdp_response.exchange_response.sdp.unwrap();
 
-    let ret = SDPMessage::parse_buffer(sdp_response_text.as_bytes()).unwrap();
-    let answer = gst_webrtc::WebRTCSessionDescription::new(gst_webrtc::WebRTCSDPType::Answer, ret);
+    let sdp_response = xcloud.exchange_sdp(session, &sdp_text)
+        .expect("exchange sdp failed");
+    dbg!(&sdp_response);
+    let sdp_response_text = sdp_response.exchange_response.sdp
+        .expect("Failed unrwapping SDP section");
+    let ret = SDPMessage::parse_buffer(sdp_response_text.as_bytes())
+        .expect("Failed parsing SDP");
+    let answer = 
+        gst_webrtc::WebRTCSessionDescription::new(gst_webrtc::WebRTCSDPType::Answer, ret);
     webrtc
         .emit_by_name::<()>("set-remote-description", &[&answer, &None::<gst::Promise>]);
 }
 
-fn send_ice_candidate_message(values: &[glib::Value]) {
-    dbg!(values);
+fn send_ice_candidate_message(
+    values: &[glib::Value],
+    candidates: &mut Box<Vec<IceCandidate>>,
+    xcloud: &GamestreamingClient,
+    session: &SessionResponse,
+    webrtc: &gst::Element,
+) {
+    //dbg!(values);
     let mlineindex = values[1].get::<u32>().expect("Invalid argument");
     let candidate = values[2].get::<String>().expect("Invalid argument");
-    /*let message = json!({
-        "ice": {
-            "candidate": candidate,
-            "sdpMLineIndex": mlineindex,
+
+    dbg!("Adding ICE candidate to pending list", &values);
+    candidates.push(IceCandidate {
+        candidate: candidate,
+        sdp_mid: None,
+        sdp_mline_index: Some(mlineindex as u16),
+        username_fragment: None,
+    });
+
+    dbg!("all", &candidates);
+    if candidates.len() == 6 {
+        eprintln!("Sending over ICE candidates");
+        let bla = candidates.clone();
+        let result = xcloud.exchange_ice(session, *bla)
+            .expect("Failed ICE exchange");
+        eprintln!("Adding remote ICE candidates");
+        for candidate in result.exchange_response {
+            
+            let c = candidate.candidate;
+            let sdmlineindex = candidate.sdp_mline_index.unwrap() as u32;
+            eprintln!("Adding remote ICE candidate: {:?} :::::::: {:?}", &c, sdmlineindex);
+
+            webrtc
+                .emit_by_name::<()>("add-ice-candidate", &[&sdmlineindex, &c]);
         }
-    });*/
-    //dbg!("Sending {}", message.to_string());
-    // sender.send(message.to_string()).unwrap();
+    }
+    
 }
 
 fn on_negotiation_needed(values: &[glib::Value], xcloud: &GamestreamingClient, session: &SessionResponse) {
-    dbg!("on-negotiation-needed {:?}", values);
+    println!("on-negotiation-needed");
     let webrtc = values[0].get::<gst::Element>().expect("Invalid argument");
     let clone = webrtc.clone();
     let xcloud_clone = xcloud.clone();
@@ -159,50 +185,31 @@ fn gstreamer_main() {
     gst::init().unwrap();
 
     // Constants
-    let H264_VIDEO = gst::Caps::new_simple(
-        "application/x-rtp",
-        &[
-            ("media", &"video"),
-            ("encoding-name", &"H264"),
-            ("payload", &("96")),
-            ("clock-rate", &("90000")),
-        ],
-    );
-
-    let OPUS_AUDIO = gst::Caps::new_simple(
-        "application/x-rtp",
-        &[
-            ("media", &"audio"),
-            ("encoding-name", &"OPUS"),
-            ("payload", &("97")),
-            ("clock-rate", &("48000")),
-            ("encoding-params", &"2"),
-        ],
-    );
+    let H264_VIDEO = gst::Caps::from_str("application/x-rtp, media= (string)video, clock-rate= (int)90000, encoding-name= (string)H264, payload= (int)96").unwrap();
+    let OPUS_AUDIO = gst::Caps::from_str("application/x-rtp, media= (string)audio, clock-rate= (int)48000, encoding-name= (string)OPUS, payload= (int)97").unwrap();
 
     // Create elements
     let webrtc = gst::ElementFactory::make("webrtcbin")
         .name("recv")
         .property("stun-server", "stun://stun.l.google.com:19302")
-        //.property("enable-data", true) // Enable data channels
+        .property("bundle-policy", WebRTCBundlePolicy::MaxBundle) // 0: none, 1: balanced, 2 max-compat, 3: max-bundle
+        .property("async-handling", true)
+        //.property("ice-transport-policy", WebRTCICETransportPolicy::All) // 0: all, 1: relay
+        //.property("message-forward", true)
         .build()
         .expect("Failed to create webrtcbin");
     
-    let depay = gst::ElementFactory::make("rtpvp8depay")
+    let depay = gst::ElementFactory::make("rtph264depay")
         .build()
         .expect("Failed to create depay");
 
-    let decoder = gst::ElementFactory::make("vp8dec")
+    let decoder = gst::ElementFactory::make("avdec_h264")
         .build()
         .expect("Failed to create decoder");
 
     let convert = gst::ElementFactory::make("videoconvert")
         .build()
         .expect("Failed to create convert");
-
-    let queue = gst::ElementFactory::make("queue")
-        .build()
-        .expect("Failed to create queue");
 
     let sink = gst::ElementFactory::make("autovideosink")
         .build()
@@ -217,23 +224,28 @@ fn gstreamer_main() {
             &depay,
             &decoder,
             &convert,
-            &queue,
             &sink,
         ])
         .expect("Failed to add to pipeline");
 
-    gst::Element::link_many(&[ &depay, &decoder, &convert, &queue, &sink])
+    gst::Element::link_many(&[ &depay, &decoder, &convert, &sink])
         .expect("Failed to link elements");
 
     // Connect callbacks
     let xcloud_clone = xcloud.clone();
+    let xcloud_clone2 = xcloud.clone();
     let session_clone = session.clone();
+    let session_clone2 = session.clone();
+    let mut candidates: Vec<IceCandidate> = vec![];
+    let cs_box  = Mutex::new(Box::new(candidates));
+    let webrtc_clone = Box::new(webrtc.clone());
     webrtc.connect("on-negotiation-needed", false, move |values| {
         on_negotiation_needed(values, &xcloud_clone, &session_clone);
         None
     });
     webrtc.connect("on-ice-candidate", false, move |values| {
-        send_ice_candidate_message(values);
+        let mut cs_box_clone = cs_box.lock().expect("Failed mutex lock");
+        send_ice_candidate_message( values, &mut cs_box_clone, &xcloud_clone2, &session_clone2, &webrtc_clone);
         None
     });
 
@@ -257,6 +269,15 @@ fn gstreamer_main() {
                 &OPUS_AUDIO,
             ],
         );
+
+    println!("Channels created");
+    // dbg!(input_channel, control_channel, message_channel, chat_channel);
+
+    // Start playing
+    pipeline
+        .set_state(gst::State::Playing)
+        .expect("Failed setting PLAYING state");
+
     // Create datachannels
     // INPUT, protocol: "1.0", ordered: true
     let input_init_struct = gst::Structure::builder("options")
@@ -292,13 +313,6 @@ fn gstreamer_main() {
     let chat_channel = webrtc
         .emit_by_name_with_values("create-data-channel",&["chat".to_value(), chat_init_struct.to_value()]);
 
-    println!("Channels created");
-    dbg!(input_channel, control_channel, message_channel, chat_channel);
-
-    // Start playing
-    pipeline
-        .set_state(gst::State::Playing)
-        .expect("Failed setting PLAYING state");
 
     // Wait until error or EOS
     let bus = pipeline.bus().unwrap();
@@ -316,7 +330,9 @@ fn gstreamer_main() {
                 );
                 break;
             }
-            _ => (),
+            val => {
+                dbg!(val);
+            },
         }
     }
 

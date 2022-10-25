@@ -151,7 +151,8 @@ impl GamestreamingClient {
                 }
             }
 
-            std::thread::sleep(std::time::Duration::from_secs(1));
+            self.lookup_games();
+            //std::thread::sleep(std::time::Duration::from_secs(1));
         }
 
         Err(GsError::Provisioning(
