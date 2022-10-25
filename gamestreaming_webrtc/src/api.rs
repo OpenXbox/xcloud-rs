@@ -1,4 +1,4 @@
-use reqwest::{header, header::HeaderMap, Client, ClientBuilder, StatusCode, Url};
+use reqwest::{header, header::HeaderMap, blocking::Client, blocking::ClientBuilder, StatusCode, Url};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use serde_aux::prelude::*;
 use serde_json;
@@ -41,7 +41,7 @@ impl GssvApi {
         }
     }
 
-    async fn login(offering_id: &str, token: &str) -> Result<LoginResponse, GssvApiError> {
+    fn login(offering_id: &str, token: &str) -> Result<LoginResponse, GssvApiError> {
         let login_url = format!(
             "https://{}.gssv-play-prod.xboxlive.com/v2/login/user",
             offering_id
@@ -54,7 +54,7 @@ impl GssvApi {
                 .map_err(|_| GssvApiError::Unknown)?,
         );
 
-        let client = reqwest::Client::new();
+        let client = reqwest::blocking::Client::new();
         client
             .post(login_url)
             .headers(headers)
@@ -63,16 +63,15 @@ impl GssvApi {
                 offering_id: offering_id.into(),
             })
             .send()
-            .await
             .map_err(GssvApiError::HttpError)?
             .error_for_status()?
             .json::<LoginResponse>()
-            .await
+           
             .map_err(GssvApiError::HttpError)
     }
 
-    pub async fn login_xhome(token: &str) -> Result<Self, GssvApiError> {
-        let resp = GssvApi::login("xhome", token).await?;
+    pub fn login_xhome(token: &str) -> Result<Self, GssvApiError> {
+        let resp = GssvApi::login("xhome", token)?;
 
         Ok(Self::new(
             Url::parse(&resp.offering_settings.regions.first().unwrap().base_uri).unwrap(),
@@ -81,8 +80,8 @@ impl GssvApi {
         ))
     }
 
-    pub async fn login_xcloud(token: &str) -> Result<Self, GssvApiError> {
-        let resp = GssvApi::login("xgpuweb", token).await?;
+    pub fn login_xcloud(token: &str) -> Result<Self, GssvApiError> {
+        let resp = GssvApi::login("xgpuweb", token)?;
 
         Ok(Self::new(
             Url::parse(&resp.offering_settings.regions.first().unwrap().base_uri).unwrap(),
@@ -100,7 +99,7 @@ impl GssvApi {
         self.base_url.join(&path).expect("Failed to join string")
     }
 
-    async fn get_json<T>(&self, url: Url, headers: Option<HeaderMap>) -> Result<T, GssvApiError>
+    fn get_json<T>(&self, url: Url, headers: Option<HeaderMap>) -> Result<T, GssvApiError>
     where
         T: DeserializeOwned,
     {
@@ -111,15 +110,13 @@ impl GssvApi {
         }
 
         req.send()
-            .await
             .map_err(GssvApiError::HttpError)?
             .error_for_status()?
             .json::<T>()
-            .await
             .map_err(GssvApiError::HttpError)
     }
 
-    async fn post_json<RQ, RS>(
+    fn post_json<RQ, RS>(
         &self,
         url: Url,
         request_body: RQ,
@@ -137,23 +134,21 @@ impl GssvApi {
 
         req.json(&request_body)
             .send()
-            .await
             .map_err(GssvApiError::HttpError)?
             .error_for_status()?
             .json::<RS>()
-            .await
             .map_err(GssvApiError::HttpError)
     }
 
-    pub async fn get_consoles(&self) -> Result<ConsolesResponse, GssvApiError> {
-        self.get_json(self.url("/v6/servers/home"), None).await
+    pub fn get_consoles(&self) -> Result<ConsolesResponse, GssvApiError> {
+        self.get_json(self.url("/v6/servers/home"), None)
     }
 
-    pub async fn get_titles(&self) -> Result<TitlesResponse, GssvApiError> {
-        self.get_json(self.url("/v1/titles"), None).await
+    pub fn get_titles(&self) -> Result<TitlesResponse, GssvApiError> {
+        self.get_json(self.url("/v1/titles"), None)
     }
 
-    pub async fn start_session(
+    pub fn start_session(
         &self,
         server_id: Option<&str>,
         title_id: Option<&str>,
@@ -224,10 +219,9 @@ impl GssvApi {
             &request_body,
             Some(headers),
         )
-        .await
     }
 
-    pub async fn session_connect(
+    pub fn session_connect(
         &self,
         session: &SessionResponse,
         xcloud_transfer_token: &str,
@@ -239,7 +233,7 @@ impl GssvApi {
                 user_token: xcloud_transfer_token.into(),
             })
             .send()
-            .await
+           
             .map_err(GssvApiError::HttpError)?;
 
         match resp.status() {
@@ -248,23 +242,23 @@ impl GssvApi {
         }
     }
 
-    pub async fn get_session_state(
+    pub fn get_session_state(
         &self,
         session: &SessionResponse,
     ) -> Result<SessionStateResponse, GssvApiError> {
         self.get_json(self.session_url(session, "/state"), None)
-            .await
+           
     }
 
-    pub async fn get_session_config(
+    pub fn get_session_config(
         &self,
         session: &SessionResponse,
     ) -> Result<GssvSessionConfig, GssvApiError> {
         self.get_json(self.session_url(session, "/configuration"), None)
-            .await
+           
     }
 
-    pub async fn set_sdp(&self, session: &SessionResponse, sdp: &str) -> Result<(), GssvApiError> {
+    pub fn set_sdp(&self, session: &SessionResponse, sdp: &str) -> Result<(), GssvApiError> {
         let resp = self
             .client
             .post(self.session_url(session, "/sdp"))
@@ -303,7 +297,7 @@ impl GssvApi {
                 },
             })
             .send()
-            .await
+           
             .map_err(GssvApiError::HttpError)?;
 
         match resp.status() {
@@ -312,7 +306,7 @@ impl GssvApi {
         }
     }
 
-    pub async fn set_ice(
+    pub fn set_ice(
         &self,
         session: &SessionResponse,
         ice: Vec<IceCandidate>,
@@ -325,7 +319,7 @@ impl GssvApi {
                 candidate: ice,
             })
             .send()
-            .await
+           
             .map_err(GssvApiError::HttpError)?;
 
         match resp.status() {
@@ -334,21 +328,21 @@ impl GssvApi {
         }
     }
 
-    pub async fn get_sdp(
+    pub fn get_sdp(
         &self,
         session: &SessionResponse,
     ) -> Result<SdpExchangeResponse, GssvApiError> {
-        self.get_json(self.session_url(session, "/sdp"), None).await
+        self.get_json(self.session_url(session, "/sdp"), None)
     }
 
-    pub async fn get_ice(
+    pub fn get_ice(
         &self,
         session: &SessionResponse,
     ) -> Result<IceExchangeResponse, GssvApiError> {
-        self.get_json(self.session_url(session, "/ice"), None).await
+        self.get_json(self.session_url(session, "/ice"), None)
     }
 
-    pub async fn send_keepalive(
+    pub fn send_keepalive(
         &self,
         session: &SessionResponse,
     ) -> Result<KeepaliveResponse, GssvApiError> {
@@ -356,11 +350,11 @@ impl GssvApi {
             .post(self.session_url(session, "/keepalive"))
             .body("")
             .send()
-            .await
+           
             .map_err(GssvApiError::HttpError)?
             .error_for_status()?
             .json::<KeepaliveResponse>()
-            .await
+           
             .map_err(GssvApiError::HttpError)
     }
 }

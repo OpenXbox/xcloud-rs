@@ -48,22 +48,22 @@ pub struct GamestreamingClient {
 impl GamestreamingClient {
     const CONNECTION_TIMEOUT_SECS: i64 = 30;
 
-    pub async fn create(
+    pub  fn create(
         platform: Platform,
         gssv_token: &str,
         xcloud_transfer_token: &str,
     ) -> Result<Self, GsError> {
         Ok(Self {
             api: match platform {
-                Platform::Cloud => GssvApi::login_xcloud(gssv_token).await?,
-                Platform::Home => GssvApi::login_xhome(gssv_token).await?,
+                Platform::Cloud => GssvApi::login_xcloud(gssv_token)?,
+                Platform::Home => GssvApi::login_xhome(gssv_token)?,
             },
             transfer_token: xcloud_transfer_token.into(),
             platform,
         })
     }
 
-    pub async fn lookup_games(&self) -> Result<Vec<TitleResult>, GsError> {
+    pub  fn lookup_games(&self) -> Result<Vec<TitleResult>, GsError> {
         if self.platform != Platform::Cloud {
             return Err(GsError::InvalidPlatform(
                 "Cannot fetch games for this platform".into(),
@@ -73,21 +73,21 @@ impl GamestreamingClient {
         Ok(self
             .api
             .get_titles()
-            .await
+            
             .map_err(GsError::ApiError)?
             .results)
     }
 
-    pub async fn lookup_consoles(&self) -> Result<ConsolesResponse, GsError> {
+    pub  fn lookup_consoles(&self) -> Result<ConsolesResponse, GsError> {
         if self.platform != Platform::Home {
             return Err(GsError::InvalidPlatform(
                 "Cannot fetch consoles for this platform".into(),
             ));
         }
-        self.api.get_consoles().await.map_err(GsError::ApiError)
+        self.api.get_consoles().map_err(GsError::ApiError)
     }
 
-    async fn start_stream(
+     fn start_stream(
         &self,
         server_id: Option<&str>,
         title_id: Option<&str>,
@@ -99,7 +99,7 @@ impl GamestreamingClient {
                         "No title id provided to start stream".into(),
                     ));
                 }
-                title_id => self.api.start_session(None, title_id).await?,
+                title_id => self.api.start_session(None, title_id)?,
             },
             Platform::Home => match server_id {
                 None => {
@@ -107,7 +107,7 @@ impl GamestreamingClient {
                         "No server id provided to start stream".into(),
                     ));
                 }
-                server_id => self.api.start_session(server_id, None).await?,
+                server_id => self.api.start_session(server_id, None)?,
             },
         };
 
@@ -116,7 +116,7 @@ impl GamestreamingClient {
         while Utc::now() - start_time
             < Duration::seconds(GamestreamingClient::CONNECTION_TIMEOUT_SECS)
         {
-            let state_response = self.api.get_session_state(&session).await?;
+            let state_response = self.api.get_session_state(&session)?;
             match state_response.state.as_ref() {
                 "WaitingForResources" | "Provisioning" => {
                     println!("Waiting for session to get ready");
@@ -126,7 +126,7 @@ impl GamestreamingClient {
                     if let Err(connect_err) = self
                         .api
                         .session_connect(&session, &self.transfer_token)
-                        .await
+                        
                     {
                         println!("Failed to connect to session");
                         return Err(connect_err.into());
@@ -150,7 +150,8 @@ impl GamestreamingClient {
                     )));
                 }
             }
-            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+
+            std::thread::sleep(std::time::Duration::from_secs(1));
         }
 
         Err(GsError::Provisioning(
@@ -158,34 +159,34 @@ impl GamestreamingClient {
         ))
     }
 
-    pub async fn start_stream_xcloud(&self, title_id: &str) -> Result<SessionResponse, GsError> {
+    pub  fn start_stream_xcloud(&self, title_id: &str) -> Result<SessionResponse, GsError> {
         if self.platform != Platform::Cloud {
             return Err(GsError::InvalidPlatform(
                 "Attempted to start XCloud stream via Home API".into(),
             ));
         }
-        self.start_stream(None, Some(title_id)).await
+        self.start_stream(None, Some(title_id))
     }
 
-    pub async fn start_stream_xhome(&self, server_id: &str) -> Result<SessionResponse, GsError> {
+    pub  fn start_stream_xhome(&self, server_id: &str) -> Result<SessionResponse, GsError> {
         if self.platform != Platform::Home {
             return Err(GsError::InvalidPlatform(
                 "Attempted to start Home stream via XCloud API".into(),
             ));
         }
-        self.start_stream(Some(server_id), None).await
+        self.start_stream(Some(server_id), None)
     }
 
-    pub async fn exchange_sdp(
+    pub  fn exchange_sdp(
         &self,
         session: &SessionResponse,
         sdp: &str,
     ) -> Result<SdpExchangeResponse, GsError> {
         self.api
             .set_sdp(session, sdp)
-            .await
+            
             .map_err(GsError::ApiError)?;
-        let sdp_response = self.api.get_sdp(session).await.map_err(GsError::ApiError)?;
+        let sdp_response = self.api.get_sdp(session).map_err(GsError::ApiError)?;
         let error_str = match &sdp_response.exchange_response.status {
             Some(status) => match status.as_ref() {
                 "success" => {
@@ -204,16 +205,16 @@ impl GamestreamingClient {
         )))
     }
 
-    pub async fn exchange_ice(
+    pub  fn exchange_ice(
         &self,
         session: &SessionResponse,
         ice_candidate_init: Vec<IceCandidate>,
     ) -> Result<IceExchangeResponse, GsError> {
         self.api
             .set_ice(session, ice_candidate_init)
-            .await
+            
             .map_err(GsError::ApiError)?;
-        self.api.get_ice(session).await.map_err(GsError::ApiError)
+        self.api.get_ice(session).map_err(GsError::ApiError)
     }
 }
 
