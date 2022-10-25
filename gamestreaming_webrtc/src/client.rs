@@ -9,7 +9,7 @@ use crate::api::{
 };
 use crate::error::GsError;
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub enum Platform {
     Cloud,
     Home,
@@ -38,6 +38,7 @@ impl ToString for Platform {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct GamestreamingClient {
     api: GssvApi,
     transfer_token: String,

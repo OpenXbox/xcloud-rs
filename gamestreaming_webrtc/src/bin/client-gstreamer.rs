@@ -1,7 +1,10 @@
-use gst_webrtc::{ffi::GstWebRTCRTPTransceiver, glib, gst::StructureRef};
+use gamestreaming_webrtc::{GamestreamingClient, Platform, api::SessionResponse};
+use gst_webrtc::{ffi::{GstWebRTCRTPTransceiver, GstWebRTCDataChannel}, glib, gst::StructureRef, WebRTCSessionDescription, gst_sdp::SDPMessage};
 use gstreamer_webrtc as gst_webrtc;
 use gstreamer_webrtc::gst;
 use gst::{prelude::*, ElementFactory};
+use xal::utils::TokenStore;
+use async_std::task;
 
 /// macOS has a specific requirement that there must be a run loop running on the main thread in
 /// order to open windows and use OpenGL, and that the global NSApplication instance must be
@@ -60,7 +63,7 @@ where
     }
 }
 
-fn on_offer_created(reply: &StructureRef, webrtc: gst::Element) {
+fn on_offer_created(reply: &StructureRef, webrtc: gst::Element, xcloud: GamestreamingClient, session: &SessionResponse) {
     dbg!("create-offer callback");
     dbg!("reply", reply);
     let offer = reply
@@ -68,20 +71,45 @@ fn on_offer_created(reply: &StructureRef, webrtc: gst::Element) {
         .expect("Invalid argument");
 
     let sdp_text = offer.sdp().as_text().unwrap();
-    dbg!("offer {}", sdp_text);
+    dbg!("offer {}", &sdp_text);
     webrtc
         .emit_by_name::<()>("set-local-description", &[&offer, &None::<gst::Promise>]);
+
+    let sdp_response = task::block_on(async {
+        xcloud.exchange_sdp(session, &sdp_text).await.unwrap()
+    });
+    let sdp_response_text = sdp_response.exchange_response.sdp.unwrap();
+
+    let ret = SDPMessage::parse_buffer(sdp_response_text.as_bytes()).unwrap();
+    let answer = gst_webrtc::WebRTCSessionDescription::new(gst_webrtc::WebRTCSDPType::Answer, ret);
+    webrtc
+        .emit_by_name::<()>("set-remote-description", &[&answer, &None::<gst::Promise>]);
 }
 
-fn on_negotiation_needed(values: &[glib::Value]) {
+fn send_ice_candidate_message(values: &[glib::Value]) {
+    dbg!(values);
+    let mlineindex = values[1].get::<u32>().expect("Invalid argument");
+    let candidate = values[2].get::<String>().expect("Invalid argument");
+    /*let message = json!({
+        "ice": {
+            "candidate": candidate,
+            "sdpMLineIndex": mlineindex,
+        }
+    });*/
+    //dbg!("Sending {}", message.to_string());
+    // sender.send(message.to_string()).unwrap();
+}
+
+fn on_negotiation_needed(values: &[glib::Value], xcloud: &GamestreamingClient, session: &SessionResponse) {
     dbg!("on-negotiation-needed {:?}", values);
     let webrtc = values[0].get::<gst::Element>().expect("Invalid argument");
     let clone = webrtc.clone();
+    let xcloud_clone = xcloud.clone();
+    let session_clone = session.clone();
     let promise = gst::Promise::with_change_func(move |res| {
-        dbg!("on-offer-promise", res);
         match res {
             Ok(res) => {
-                on_offer_created(res.unwrap(), clone)
+                on_offer_created(res.unwrap(), clone, xcloud_clone, &session_clone);
             },
             Err(err) => {
                 eprintln!("Promise error: {:?}", err);
@@ -92,7 +120,49 @@ fn on_negotiation_needed(values: &[glib::Value]) {
     webrtc.emit_by_name::<()>("create-offer", &[&options, &promise]);
 }
 
-fn tutorial_main() {
+const TOKENS_FILEPATH: &'static str = "tokens.json";
+
+fn gstreamer_main() {
+    let ts = match TokenStore::load(TOKENS_FILEPATH) {
+        Ok(ts) => ts,
+        Err(err) => {
+            eprintln!("Failed to load tokens!");
+            return;
+        }
+    };
+
+    let res = task::block_on(async {
+        let xcloud = GamestreamingClient::create(
+            Platform::Cloud,
+        &ts.gssv_token.token_data.token,
+        &ts.xcloud_transfer_token.lpt).await.unwrap();
+
+        let session = match xcloud.lookup_games().await.unwrap().first() {
+            Some(title) => {
+                println!("Starting title: {:?}", title);
+                let session = xcloud.start_stream_xcloud(&title.title_id).await.unwrap();
+                println!("Session started successfully: {:?}", session);
+    
+                session
+            }
+            None => {
+                return Err("No titles received from API");
+            }
+        };
+
+        Ok((xcloud, session))
+    });
+
+    let (xcloud, session) = match res {
+        Ok((xcloud, session)) => {
+            (xcloud, session)
+        },
+        Err(_) => {
+            eprintln!("Failed to construct GSSV client!");
+            return;
+        }
+    };
+
     // Initialize GStreamer
     gst::init().unwrap();
 
@@ -122,6 +192,7 @@ fn tutorial_main() {
     let webrtc = gst::ElementFactory::make("webrtcbin")
         .name("recv")
         .property("stun-server", "stun://stun.l.google.com:19302")
+        //.property("enable-data", true) // Enable data channels
         .build()
         .expect("Failed to create webrtcbin");
     
@@ -163,13 +234,20 @@ fn tutorial_main() {
         .expect("Failed to link elements");
 
     // Connect callbacks
+    let xcloud_clone = xcloud.clone();
+    let session_clone = session.clone();
     webrtc.connect("on-negotiation-needed", false, move |values| {
-        on_negotiation_needed(values);
+        on_negotiation_needed(values, &xcloud_clone, &session_clone);
         None
     });
-    webrtc.connect("on-ice-candidate", false, |x| { eprintln!("On ICE candidate"); None });
-    webrtc.connect("pad-added", false, |x| { eprintln!("Pad added"); None });
-    
+    webrtc.connect("on-ice-candidate", false, move |values| {
+        send_ice_candidate_message(values);
+        None
+    });
+
+    // Create transceivers
+    // Video: Recvonly / H264
+    // Audio: SenvRecv / Opus
     webrtc
         .emit_by_name::<glib::Object>(
             "add-transceiver",
@@ -187,6 +265,39 @@ fn tutorial_main() {
                 &OPUS_AUDIO,
             ],
         );
+    // Create datachannels
+    // INPUT, protocol: "1.0", ordered: true
+    let input_init_struct = gst::Structure::builder("options")
+        .field("ordered", true)
+        .field("protocol", "1.0")
+        .build();
+
+    let input_channel = webrtc
+        .emit_by_name_with_values("create-data-channel",&["input".to_value(), input_init_struct.to_value()]);
+
+    // CONTROL, protocol: "controlV1"
+    let control_init_struct = gst::Structure::builder("options")
+        .field("protocol", "controlV1")
+        .build();
+    let control_channel = webrtc
+        .emit_by_name_with_values("create-data-channel",&["control".to_value(), control_init_struct.to_value()]);
+
+    // MESSAGE, protocol: "messageV1"
+    let message_init_struct = gst::Structure::builder("options")
+        .field("protocol", "messageV1")
+        .build();
+    let message_channel = webrtc
+        .emit_by_name_with_values("create-data-channel",&["message".to_value(), message_init_struct.to_value()]);
+
+    // CHAT, protocol: "chatV1"
+    let chat_init_struct = gst::Structure::builder("options")
+        .field("protocol", "chatV1")
+        .build();
+    let chat_channel = webrtc
+        .emit_by_name_with_values("create-data-channel",&["chat".to_value(), chat_init_struct.to_value()]);
+
+    println!("Channels created");
+    dbg!(input_channel, control_channel, message_channel, chat_channel);
 
     // Start playing
     pipeline
@@ -220,8 +331,8 @@ fn tutorial_main() {
 }
 
 fn main() {
-    // tutorials_common::run is only required to set up the application environment on macOS
+    // run wrapper is only required to set up the application environment on macOS
     // (but not necessary in normal Cocoa applications where this is set up automatically)
-    run(tutorial_main);
+    run(gstreamer_main);
 }
 

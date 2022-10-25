@@ -15,6 +15,7 @@ pub enum GssvApiError {
 }
 
 /// Gamestreaming API Client
+#[derive(Debug, Clone)]
 pub struct GssvApi {
     client: Client,
     base_url: Url,
@@ -645,7 +646,7 @@ pub struct TitlesResponse {
     pub continuation_token: Option<String>,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct SessionResponse {
     session_path: String,
