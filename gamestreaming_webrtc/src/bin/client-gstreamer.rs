@@ -4,7 +4,6 @@ use gstreamer_webrtc as gst_webrtc;
 use gstreamer_webrtc::gst;
 use gst::{prelude::*, ElementFactory};
 use xal::utils::TokenStore;
-use async_std::task;
 
 /// macOS has a specific requirement that there must be a run loop running on the main thread in
 /// order to open windows and use OpenGL, and that the global NSApplication instance must be
@@ -75,9 +74,7 @@ fn on_offer_created(reply: &StructureRef, webrtc: gst::Element, xcloud: Gamestre
     webrtc
         .emit_by_name::<()>("set-local-description", &[&offer, &None::<gst::Promise>]);
 
-    let sdp_response = task::block_on(async {
-        xcloud.exchange_sdp(session, &sdp_text).await.unwrap()
-    });
+    let sdp_response = xcloud.exchange_sdp(session, &sdp_text).unwrap();
     let sdp_response_text = sdp_response.exchange_response.sdp.unwrap();
 
     let ret = SDPMessage::parse_buffer(sdp_response_text.as_bytes()).unwrap();
@@ -131,34 +128,21 @@ fn gstreamer_main() {
         }
     };
 
-    let res = task::block_on(async {
-        let xcloud = GamestreamingClient::create(
-            Platform::Cloud,
-        &ts.gssv_token.token_data.token,
-        &ts.xcloud_transfer_token.lpt).await.unwrap();
+    let xcloud = GamestreamingClient::create(
+        Platform::Cloud,
+    &ts.gssv_token.token_data.token,
+    &ts.xcloud_transfer_token.lpt).unwrap();
 
-        let session = match xcloud.lookup_games().await.unwrap().first() {
-            Some(title) => {
-                println!("Starting title: {:?}", title);
-                let session = xcloud.start_stream_xcloud(&title.title_id).await.unwrap();
-                println!("Session started successfully: {:?}", session);
-    
-                session
-            }
-            None => {
-                return Err("No titles received from API");
-            }
-        };
+    let session = match xcloud.lookup_games().unwrap().first() {
+        Some(title) => {
+            println!("Starting title: {:?}", title);
+            let session = xcloud.start_stream_xcloud(&title.title_id).unwrap();
+            println!("Session started successfully: {:?}", session);
 
-        Ok((xcloud, session))
-    });
-
-    let (xcloud, session) = match res {
-        Ok((xcloud, session)) => {
-            (xcloud, session)
-        },
-        Err(_) => {
-            eprintln!("Failed to construct GSSV client!");
+            session
+        }
+        None => {
+            eprintln!("No titles received from API");
             return;
         }
     };
