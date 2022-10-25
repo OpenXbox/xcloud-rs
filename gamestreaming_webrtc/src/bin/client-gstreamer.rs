@@ -1,3 +1,5 @@
+use std::{fs::File, io::Write};
+
 use gamestreaming_webrtc::{GamestreamingClient, Platform, api::SessionResponse};
 use gst_webrtc::{ffi::{GstWebRTCRTPTransceiver, GstWebRTCDataChannel}, glib, gst::StructureRef, WebRTCSessionDescription, gst_sdp::SDPMessage};
 use gstreamer_webrtc as gst_webrtc;
@@ -70,6 +72,12 @@ fn on_offer_created(reply: &StructureRef, webrtc: gst::Element, xcloud: Gamestre
         .expect("Invalid argument");
 
     let sdp_text = offer.sdp().as_text().unwrap();
+    use std::os::unix::io::FromRawFd;
+    unsafe {
+        let mut stdout = File::from_raw_fd(1);
+        stdout.write(sdp_text.as_bytes());
+    }
+
     dbg!("offer {}", &sdp_text);
     webrtc
         .emit_by_name::<()>("set-local-description", &[&offer, &None::<gst::Promise>]);
@@ -254,6 +262,7 @@ fn gstreamer_main() {
     let input_init_struct = gst::Structure::builder("options")
         .field("ordered", true)
         .field("protocol", "1.0")
+        .field("id", 3)
         .build();
 
     let input_channel = webrtc
@@ -262,6 +271,7 @@ fn gstreamer_main() {
     // CONTROL, protocol: "controlV1"
     let control_init_struct = gst::Structure::builder("options")
         .field("protocol", "controlV1")
+        .field("id", 4)
         .build();
     let control_channel = webrtc
         .emit_by_name_with_values("create-data-channel",&["control".to_value(), control_init_struct.to_value()]);
@@ -269,6 +279,7 @@ fn gstreamer_main() {
     // MESSAGE, protocol: "messageV1"
     let message_init_struct = gst::Structure::builder("options")
         .field("protocol", "messageV1")
+        .field("id", 5)
         .build();
     let message_channel = webrtc
         .emit_by_name_with_values("create-data-channel",&["message".to_value(), message_init_struct.to_value()]);
@@ -276,6 +287,7 @@ fn gstreamer_main() {
     // CHAT, protocol: "chatV1"
     let chat_init_struct = gst::Structure::builder("options")
         .field("protocol", "chatV1")
+        .field("id", 6)
         .build();
     let chat_channel = webrtc
         .emit_by_name_with_values("create-data-channel",&["chat".to_value(), chat_init_struct.to_value()]);
