@@ -1,7 +1,7 @@
 use std::{fs::File, io::Write, str::FromStr, sync::Mutex};
 
 use gamestreaming_webrtc::{GamestreamingClient, Platform, api::{SessionResponse, IceCandidate}};
-use gst_webrtc::{ffi::{GstWebRTCRTPTransceiver, GstWebRTCDataChannel, GstWebRTCBundlePolicy}, glib, gst::{StructureRef, PadDirection}, WebRTCSessionDescription, gst_sdp::SDPMessage, WebRTCBundlePolicy, WebRTCICETransportPolicy};
+use gst_webrtc::{ffi::{GstWebRTCRTPTransceiver, GstWebRTCDataChannel, GstWebRTCBundlePolicy}, glib, gst::{StructureRef, PadDirection, State}, WebRTCSessionDescription, gst_sdp::SDPMessage, WebRTCBundlePolicy, WebRTCICETransportPolicy};
 use gstreamer_webrtc as gst_webrtc;
 use gstreamer_webrtc::gst;
 use gst::{prelude::*, ElementFactory};
@@ -242,9 +242,72 @@ fn gstreamer_main() {
         .build()
         .expect("Failed to create webrtcbin");
 
+    // VIDEO
+    let video_depay = gst::ElementFactory::make("rtph264depay")
+        .build()
+        .expect("Failed to create video_depay");
+
+    let video_decoder = gst::ElementFactory::make("avdec_h264")
+        .build()
+        .expect("Failed to create video_decoder");
+
+    let video_convert = gst::ElementFactory::make("videoconvert")
+        .build()
+        .expect("Failed to create video_convert");
+
+    let video_queue = gst::ElementFactory::make("queue")
+        .build()
+        .expect("Failed to create video_queue");
+
+    let video_sink = gst::ElementFactory::make("ximagesink")
+        .build()
+        .expect("Failed to create video_sink");
+
+    // AUDIO
+    let audio_depay = gst::ElementFactory::make("rtpopusdepay")
+        .build()
+        .expect("Failed to create audio_depay");
+
+    let audio_decoder = gst::ElementFactory::make("opusdec")
+        .build()
+        .expect("Failed to create audio_decoder");
+
+    let audio_convert = gst::ElementFactory::make("audioconvert")
+        .build()
+        .expect("Failed to create audio_convert");
+
+    let audio_queue = gst::ElementFactory::make("queue")
+        .build()
+        .expect("Failed to create audio_queue");
+
+    let audio_sink = gst::ElementFactory::make("pipewiresink")
+        .build()
+        .expect("Failed to create audio_sink");
+
     // Build the pipeline
     let pipeline = gst::Pipeline::builder().name("test-pipeline").build();
-    pipeline.add(&webrtc).expect("Failed to add webrtc to pipeline");
+
+    pipeline
+        .add_many(&[
+            &webrtc,
+
+            &video_depay,
+            &video_decoder,
+            &video_convert,
+            &video_queue,
+            &video_sink,
+
+            &audio_depay,
+            &audio_decoder,
+            &audio_convert,
+            &audio_queue,
+            &audio_sink,
+        ])
+        .expect("Failed to add video elements to pipeline");
+    gst::Element::link_many(&[&video_depay, &video_decoder, &video_convert, &video_queue, &video_sink])
+        .expect("Failed to link video elements");
+    gst::Element::link_many(&[ &audio_depay, &audio_decoder, &audio_convert, &audio_queue, &audio_sink])
+        .expect("Failed to link audio elements");
 
     // Connect callbacks
     let xcloud_clone = xcloud.clone();
@@ -263,84 +326,24 @@ fn gstreamer_main() {
         send_ice_candidate_message( values, &mut cs_box_clone, &xcloud_clone2, &session_clone2, &webrtc_clone);
         None
     });
+    /*
+    webrtc.connect("on-data-channel", false, move |values| {
+        None
+    });
+     */
 
-    let pipeline_clone = pipeline.clone();
     webrtc.connect_pad_added(move |_, pad| {
         let pad_name = pad.name();
         eprintln!("Pad added {} {:?}", pad_name, pad.direction());
         if pad_name == "src_0" {
             dbg!(pad.caps());
             println!("Video Pad: {:?}", pad_name);
-            // VIDEO
-            let video_depay = gst::ElementFactory::make("rtph264depay")
-                .build()
-                .expect("Failed to create video_depay");
 
-            let video_decoder = gst::ElementFactory::make("avdec_h264")
-                .build()
-                .expect("Failed to create video_decoder");
-
-            let video_convert = gst::ElementFactory::make("videoconvert")
-                .build()
-                .expect("Failed to create video_convert");
-
-            let video_queue = gst::ElementFactory::make("queue")
-                .build()
-                .expect("Failed to create video_queue");
-
-            let video_sink = gst::ElementFactory::make("autovideosink")
-                .build()
-                .expect("Failed to create video_sink");
-            
-            
-
-            pipeline_clone
-                .add_many(&[
-                    &video_depay,
-                    &video_decoder,
-                    &video_convert,
-                    &video_queue,
-                    &video_sink,
-                ])
-                .expect("Failed to add video elements to pipeline");
-            gst::Element::link_many(&[&video_depay, &video_decoder, &video_convert, &video_queue, &video_sink])
-                .expect("Failed to link video elements");
             let depay_sink = &video_depay.static_pad("sink").expect("Failed to get sink from video_depay");
+            //video_depay.set_state(State::Playing).expect("Failed to set video_depay to playing");
             pad.link(depay_sink).expect("Failed to link video src to depay_sink");
         } else if pad_name == "src_1" {
             println!("Audio Pad: {:?}", pad_name);
-            // AUDIO
-            let audio_depay = gst::ElementFactory::make("rtpopusdepay")
-                .build()
-                .expect("Failed to create audio_depay");
-
-            let audio_decoder = gst::ElementFactory::make("opusdec")
-                .build()
-                .expect("Failed to create audio_decoder");
-
-            let audio_convert = gst::ElementFactory::make("audioconvert")
-                .build()
-                .expect("Failed to create audio_convert");
-
-            let audio_queue = gst::ElementFactory::make("queue")
-                .build()
-                .expect("Failed to create audio_queue");
-
-            let audio_sink = gst::ElementFactory::make("pipewiresink")
-                .build()
-                .expect("Failed to create audio_sink");
-            pipeline_clone
-                .add_many(&[
-                    &audio_depay,
-                    &audio_decoder,
-                    &audio_convert,
-                    &audio_queue,
-                    &audio_sink,
-                ])
-                .expect("Failed to add audio elements to pipeline");
-        
-            gst::Element::link_many(&[ &audio_depay, &audio_decoder, &audio_convert, &audio_queue, &audio_sink])
-                .expect("Failed to link audio elements");
             let depay_sink = &audio_depay.static_pad("sink").expect("Failed to get sink from audio_depay");
             pad.link(depay_sink).expect("Failed to link audio src to depay_sink");
         } else {
