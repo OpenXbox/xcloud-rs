@@ -288,14 +288,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let d1 = Arc::clone(&channel);
         channel.on_open(Box::new(move || {
             println!("Data channel '{}'-'{}' open", d1.label(), d1.id());
-    
+
             let d2 = Arc::clone(&d1);
             Box::pin(async move {
                 let mut result = Result::<usize, webrtc::Error>::Ok(0);
                 while result.is_ok() {
                     let timeout = tokio::time::sleep(Duration::from_secs(5));
                     tokio::pin!(timeout);
-    
+
                     tokio::select! {
                         _ = timeout.as_mut() =>{
                             /*
@@ -309,7 +309,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
             })
         })).await;
-    
+
         let message_label = name.clone();
         channel
             .on_message(Box::new(move |msg: DataChannelMessage| {
@@ -376,7 +376,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let codec = track.codec().await;
                 let mime_type = codec.capability.mime_type.to_lowercase();
                 if mime_type == MIME_TYPE_OPUS.to_lowercase() {
-                    println!("Got Opus track, saving to disk as output.opus (48 kHz, 2 channels)");     
+                    println!("Got Opus track, saving to disk as output.opus (48 kHz, 2 channels)");
                     tokio::spawn(async move {
                         let _ = save_to_disk(ogg_writer2, track, notify_rx2).await;
                     });
@@ -390,7 +390,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }else {
             Box::pin(async {})
         }
-	})).await;
+    })).await;
 
     // Create an offer to send to the other process
     let offer = peer_connection.create_offer(None).await?;

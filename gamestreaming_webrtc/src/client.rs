@@ -48,7 +48,7 @@ pub struct GamestreamingClient {
 impl GamestreamingClient {
     const CONNECTION_TIMEOUT_SECS: i64 = 30;
 
-    pub  fn create(
+    pub fn create(
         platform: Platform,
         gssv_token: &str,
         xcloud_transfer_token: &str,
@@ -63,22 +63,17 @@ impl GamestreamingClient {
         })
     }
 
-    pub  fn lookup_games(&self) -> Result<Vec<TitleResult>, GsError> {
+    pub fn lookup_games(&self) -> Result<Vec<TitleResult>, GsError> {
         if self.platform != Platform::Cloud {
             return Err(GsError::InvalidPlatform(
                 "Cannot fetch games for this platform".into(),
             ));
         }
 
-        Ok(self
-            .api
-            .get_titles()
-            
-            .map_err(GsError::ApiError)?
-            .results)
+        Ok(self.api.get_titles().map_err(GsError::ApiError)?.results)
     }
 
-    pub  fn lookup_consoles(&self) -> Result<ConsolesResponse, GsError> {
+    pub fn lookup_consoles(&self) -> Result<ConsolesResponse, GsError> {
         if self.platform != Platform::Home {
             return Err(GsError::InvalidPlatform(
                 "Cannot fetch consoles for this platform".into(),
@@ -87,7 +82,7 @@ impl GamestreamingClient {
         self.api.get_consoles().map_err(GsError::ApiError)
     }
 
-     fn start_stream(
+    fn start_stream(
         &self,
         server_id: Option<&str>,
         title_id: Option<&str>,
@@ -123,10 +118,8 @@ impl GamestreamingClient {
                 }
                 "ReadyToConnect" => {
                     println!("Stream is ready to connect");
-                    if let Err(connect_err) = self
-                        .api
-                        .session_connect(&session, &self.transfer_token)
-                        
+                    if let Err(connect_err) =
+                        self.api.session_connect(&session, &self.transfer_token)
                     {
                         println!("Failed to connect to session");
                         return Err(connect_err.into());
@@ -160,7 +153,7 @@ impl GamestreamingClient {
         ))
     }
 
-    pub  fn start_stream_xcloud(&self, title_id: &str) -> Result<SessionResponse, GsError> {
+    pub fn start_stream_xcloud(&self, title_id: &str) -> Result<SessionResponse, GsError> {
         if self.platform != Platform::Cloud {
             return Err(GsError::InvalidPlatform(
                 "Attempted to start XCloud stream via Home API".into(),
@@ -169,7 +162,7 @@ impl GamestreamingClient {
         self.start_stream(None, Some(title_id))
     }
 
-    pub  fn start_stream_xhome(&self, server_id: &str) -> Result<SessionResponse, GsError> {
+    pub fn start_stream_xhome(&self, server_id: &str) -> Result<SessionResponse, GsError> {
         if self.platform != Platform::Home {
             return Err(GsError::InvalidPlatform(
                 "Attempted to start Home stream via XCloud API".into(),
@@ -178,15 +171,12 @@ impl GamestreamingClient {
         self.start_stream(Some(server_id), None)
     }
 
-    pub  fn exchange_sdp(
+    pub fn exchange_sdp(
         &self,
         session: &SessionResponse,
         sdp: &str,
     ) -> Result<SdpExchangeResponse, GsError> {
-        self.api
-            .set_sdp(session, sdp)
-            
-            .map_err(GsError::ApiError)?;
+        self.api.set_sdp(session, sdp).map_err(GsError::ApiError)?;
         let sdp_response = self.api.get_sdp(session).map_err(GsError::ApiError)?;
         let error_str = match &sdp_response.exchange_response.status {
             Some(status) => match status.as_ref() {
@@ -206,14 +196,13 @@ impl GamestreamingClient {
         )))
     }
 
-    pub  fn exchange_ice(
+    pub fn exchange_ice(
         &self,
         session: &SessionResponse,
         ice_candidate_init: Vec<IceCandidate>,
     ) -> Result<IceExchangeResponse, GsError> {
         self.api
             .set_ice(session, ice_candidate_init)
-            
             .map_err(GsError::ApiError)?;
         self.api.get_ice(session).map_err(GsError::ApiError)
     }

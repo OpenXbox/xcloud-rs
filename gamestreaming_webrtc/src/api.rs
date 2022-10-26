@@ -1,4 +1,6 @@
-use reqwest::{header, header::HeaderMap, blocking::Client, blocking::ClientBuilder, StatusCode, Url};
+use reqwest::{
+    blocking::Client, blocking::ClientBuilder, header, header::HeaderMap, StatusCode, Url,
+};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use serde_aux::prelude::*;
 use serde_json;
@@ -66,7 +68,6 @@ impl GssvApi {
             .map_err(GssvApiError::HttpError)?
             .error_for_status()?
             .json::<LoginResponse>()
-           
             .map_err(GssvApiError::HttpError)
     }
 
@@ -233,7 +234,6 @@ impl GssvApi {
                 user_token: xcloud_transfer_token.into(),
             })
             .send()
-           
             .map_err(GssvApiError::HttpError)?;
 
         match resp.status() {
@@ -247,7 +247,6 @@ impl GssvApi {
         session: &SessionResponse,
     ) -> Result<SessionStateResponse, GssvApiError> {
         self.get_json(self.session_url(session, "/state"), None)
-           
     }
 
     pub fn get_session_config(
@@ -255,7 +254,6 @@ impl GssvApi {
         session: &SessionResponse,
     ) -> Result<GssvSessionConfig, GssvApiError> {
         self.get_json(self.session_url(session, "/configuration"), None)
-           
     }
 
     pub fn set_sdp(&self, session: &SessionResponse, sdp: &str) -> Result<(), GssvApiError> {
@@ -297,7 +295,6 @@ impl GssvApi {
                 },
             })
             .send()
-           
             .map_err(GssvApiError::HttpError)?;
 
         match resp.status() {
@@ -319,7 +316,6 @@ impl GssvApi {
                 candidate: ice,
             })
             .send()
-           
             .map_err(GssvApiError::HttpError)?;
 
         match resp.status() {
@@ -328,17 +324,11 @@ impl GssvApi {
         }
     }
 
-    pub fn get_sdp(
-        &self,
-        session: &SessionResponse,
-    ) -> Result<SdpExchangeResponse, GssvApiError> {
+    pub fn get_sdp(&self, session: &SessionResponse) -> Result<SdpExchangeResponse, GssvApiError> {
         self.get_json(self.session_url(session, "/sdp"), None)
     }
 
-    pub fn get_ice(
-        &self,
-        session: &SessionResponse,
-    ) -> Result<IceExchangeResponse, GssvApiError> {
+    pub fn get_ice(&self, session: &SessionResponse) -> Result<IceExchangeResponse, GssvApiError> {
         self.get_json(self.session_url(session, "/ice"), None)
     }
 
@@ -350,11 +340,9 @@ impl GssvApi {
             .post(self.session_url(session, "/keepalive"))
             .body("")
             .send()
-           
             .map_err(GssvApiError::HttpError)?
             .error_for_status()?
             .json::<KeepaliveResponse>()
-           
             .map_err(GssvApiError::HttpError)
     }
 }
