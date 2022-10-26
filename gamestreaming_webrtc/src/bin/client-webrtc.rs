@@ -1,3 +1,4 @@
+/*
 use anyhow::Result;
 use gamestreaming_webrtc::api::{IceCandidate, SessionResponse};
 use std::fs::File;
@@ -465,3 +466,5 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     Ok(())
 }
+*/
+fn main() {}

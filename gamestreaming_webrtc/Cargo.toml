@@ -24,7 +24,7 @@ lazy_static = { version = "1.4", optional = true }
 anyhow = { version = "1.0", optional = true }
 
 # gstreamer client
-gstreamer-webrtc = { version = "0.19.0", features = ["v1_16"], optional = true }
+gstreamer-webrtc = { git = "https://gitlab.freedesktop.org/gstreamer/gstreamer-rs.git", tag = "0.19.1", features = ["v1_16"], optional = true }
 
 [dev-dependencies]
 xal = { path = "../xal"}
