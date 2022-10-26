@@ -268,7 +268,6 @@ fn gstreamer_main() -> anyhow::Result<()> {
         .context("Failed to create webrtcbin")?;
 
     // VIDEO
-    let video_jitterbuffer = gst::ElementFactory::make("rtpjitterbuffer").build()?;
     let video_depay = gst::ElementFactory::make("rtph264depay").build()?;
     let video_decoder = gst::ElementFactory::make("avdec_h264").build()?;
     let video_convert = gst::ElementFactory::make("videoconvert").build()?;
@@ -282,7 +281,6 @@ fn gstreamer_main() -> anyhow::Result<()> {
     let audio_depay = gst::ElementFactory::make("rtpopusdepay").build()?;
     let audio_decoder = gst::ElementFactory::make("opusdec").build()?;
     let audio_convert = gst::ElementFactory::make("audioconvert").build()?;
-    let audio_queue = gst::ElementFactory::make("queue").build()?;
     let audio_sink = gst::ElementFactory::make("pipewiresink").build()?;
 
     // Build the pipeline
@@ -291,19 +289,18 @@ fn gstreamer_main() -> anyhow::Result<()> {
     pipeline
         .add_many(&[
             &webrtc,
-            &video_jitterbuffer,
+
             &video_depay,
             &video_decoder,
             &video_convert,
             &video_sink,
+
             &audio_depay,
             &audio_decoder,
             &audio_convert,
-            &audio_queue,
             &audio_sink,
         ])?;
     gst::Element::link_many(&[
-        &video_jitterbuffer,
         &video_depay,
         &video_decoder,
         &video_convert,
@@ -313,7 +310,6 @@ fn gstreamer_main() -> anyhow::Result<()> {
         &audio_depay,
         &audio_decoder,
         &audio_convert,
-        &audio_queue,
         &audio_sink,
     ])?;
 
@@ -357,13 +353,14 @@ fn gstreamer_main() -> anyhow::Result<()> {
             dbg!(pad.caps());
             println!("Video Pad: {:?}", pad_name);
 
-            let depay_sink = &video_jitterbuffer
+            let depay_sink = &video_depay
                 .static_pad("sink")
                 .expect("Failed to get sink from video_depay");
             pad.link(depay_sink)
                 .expect("Failed to link video src to depay_sink");
         } else if pad_name == "src_1" {
             println!("Audio Pad: {:?}", pad_name);
+            panic!();
             let depay_sink = &audio_depay
                 .static_pad("sink")
                 .expect("Failed to get sink from audio_depay");
@@ -436,6 +433,6 @@ fn main() {
     // (but not necessary in normal Cocoa applications where this is set up automatically)
     match run(gstreamer_main) {
         Ok(r) => r,
-        Err(e) => eprintln!("Error! {}", e),
+        Err(e) => eprintln!("Error! {:?}", e),
     }
 }
