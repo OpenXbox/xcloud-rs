@@ -3,6 +3,7 @@ use gamestreaming_webrtc::{
     GamestreamingClient, Platform,
 };
 use gst::prelude::*;
+use gst_webrtc::ffi::GstWebRTCDataChannel;
 use gstreamer_webrtc::{self as gst_webrtc, gst};
 use std::{str::FromStr, sync::Mutex};
 use xal::utils::TokenStore;
@@ -10,9 +11,9 @@ use xal::utils::TokenStore;
 use anyhow::{Context, Result, anyhow};
 use derive_more::{Display, Error};
 
-const H264_VIDEO_CAPS: &'static str = "application/x-rtp, media=video, clock-rate=90000, encoding-name=H264, payload=96, packetization-mode=(string)1, profile-level-id=(string)42c016";
+const H264_VIDEO_CAPS: &'static str = "application/x-rtp, media=video, clock-rate=90000, encoding-name=H264, payload=127, packetization-mode=(string)1, profile-level-id=(string)42002a";
 const OPUS_AUDIO_CAPS: &'static str =
-    "application/x-rtp, media=audio, clock-rate=48000, encoding-name=OPUS, payload=97";
+    "application/x-rtp, media=audio, clock-rate=48000, encoding-name=OPUS, payload=111, encoding=(string)2";
 
 /// macOS has a specific requirement that there must be a run loop running on the main thread in
 /// order to open windows and use OpenGL, and that the global NSApplication instance must be
@@ -174,10 +175,10 @@ fn create_datachannels(
     webrtc: &gst::Element,
 ) -> anyhow::Result<
     (
-        Option<gst_webrtc::glib::Value>,
-        Option<gst_webrtc::glib::Value>,
-        Option<gst_webrtc::glib::Value>,
-        Option<gst_webrtc::glib::Value>,
+        gst_webrtc::WebRTCDataChannel,
+        gst_webrtc::WebRTCDataChannel,
+        gst_webrtc::WebRTCDataChannel,
+        gst_webrtc::WebRTCDataChannel,
     )
 > {
     // Create datachannels
@@ -188,9 +189,9 @@ fn create_datachannels(
         .field("id", 3)
         .build();
 
-    let input_channel = webrtc.emit_by_name_with_values(
+    let input_channel = webrtc.emit_by_name::<gst_webrtc::WebRTCDataChannel>(
         "create-data-channel",
-        &["input".to_value(), input_init_struct.to_value()],
+        &[&"input", &input_init_struct],
     );
 
     // CONTROL, protocol: "controlV1"
@@ -198,9 +199,9 @@ fn create_datachannels(
         .field("protocol", "controlV1")
         .field("id", 4)
         .build();
-    let control_channel = webrtc.emit_by_name_with_values(
+    let control_channel = webrtc.emit_by_name::<gst_webrtc::WebRTCDataChannel>(
         "create-data-channel",
-        &["control".to_value(), control_init_struct.to_value()],
+        &[&"control", &control_init_struct],
     );
 
     // MESSAGE, protocol: "messageV1"
@@ -208,9 +209,9 @@ fn create_datachannels(
         .field("protocol", "messageV1")
         .field("id", 5)
         .build();
-    let message_channel = webrtc.emit_by_name_with_values(
+    let message_channel = webrtc.emit_by_name::<gst_webrtc::WebRTCDataChannel>(
         "create-data-channel",
-        &["message".to_value(), message_init_struct.to_value()],
+        &[&"message", &message_init_struct],
     );
 
     // CHAT, protocol: "chatV1"
@@ -218,9 +219,9 @@ fn create_datachannels(
         .field("protocol", "chatV1")
         .field("id", 6)
         .build();
-    let chat_channel = webrtc.emit_by_name_with_values(
+    let chat_channel = webrtc.emit_by_name::<gst_webrtc::WebRTCDataChannel>(
         "create-data-channel",
-        &["chat".to_value(), chat_init_struct.to_value()],
+        &[&"chat", &chat_init_struct],
     );
 
     Ok((
@@ -270,7 +271,9 @@ fn gstreamer_main() -> anyhow::Result<()> {
     // VIDEO
     let video_depay = gst::ElementFactory::make("rtph264depay").build()?;
     let video_decoder = gst::ElementFactory::make("avdec_h264").build()?;
-    let video_convert = gst::ElementFactory::make("videoconvert").build()?;
+    let video_convert = gst::ElementFactory::make("videoconvert")
+        .property("qos", false)
+        .build()?;
     let video_sink = gst::ElementFactory::make("autovideosink")
         .property("async-handling", true)
         .property("sync", false)
@@ -340,11 +343,11 @@ fn gstreamer_main() -> anyhow::Result<()> {
         }
         None
     });
-    /*
-    webrtc.connect("on-data-channel", false, move |values| {
+    webrtc.connect("on-data-channel", true, move |values| {
+        dbg!("on-data-channel", values);
         None
     });
-     */
+
 
     webrtc.connect_pad_added(move |_, pad| {
         let pad_name = pad.name();
@@ -360,7 +363,6 @@ fn gstreamer_main() -> anyhow::Result<()> {
                 .expect("Failed to link video src to depay_sink");
         } else if pad_name == "src_1" {
             println!("Audio Pad: {:?}", pad_name);
-            panic!();
             let depay_sink = &audio_depay
                 .static_pad("sink")
                 .expect("Failed to get sink from audio_depay");
@@ -397,6 +399,60 @@ fn gstreamer_main() -> anyhow::Result<()> {
 
     println!("Transceivers created");
     let channels = create_datachannels(&webrtc).expect("Failed to create datachannels");
+    dbg!(&channels);
+    let channel_input = channels.0;
+    let channel_control = channels.1;
+    let channel_message = channels.2;
+    let channel_chat = channels.3;
+
+    channel_input.connect_on_open(|a| {
+        eprintln!("Data channel opened: {:?}", a.label());
+    });
+
+    channel_control.connect_on_open(|a| {
+        eprintln!("Data channel opened: {:?}", a.label());
+            let msg = serde_json::to_string(&serde_json::json!({
+                "message":"authorizationRequest",
+                "accessKey":"4BDB3609-C1F1-4195-9B37-FEFF45DA8B8E",
+            })).expect("Error: Msg1");
+            a.send_string(Some(&msg));
+
+            let msg = serde_json::to_string(&serde_json::json!({
+                "message": "gamepadChanged",
+                "gamepadIndex": 0,
+                "wasAdded": true,
+            })).expect("Error: Msg2");
+            a.send_string(Some(&msg));
+    });
+
+    channel_message.connect_on_open(|a| {
+        eprintln!("Data channel opened: {:?}", a.label());
+        let msg = serde_json::to_string(&serde_json::json!({
+            "type":"Handshake",
+            "version":"messageV1",
+            "id":"0ab125e2-6eee-4687-a2f4-5cfb347f0643",
+            "cv":"",
+        })).expect("Error: Msg1");
+        a.send_string(Some(&msg));
+    });
+
+    channel_chat.connect_on_open(|a| {
+        eprintln!("Data channel opened: {:?}", a.label());
+    });
+
+    let session_clone3 = session.clone();
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .build()
+        .expect("Failed creating tokio runtime");
+
+    let keepalive_task = runtime.spawn(async move {
+        println!("Sending keepalive");
+        if let Err(err) = xcloud.keepalive(&session_clone3) {
+            println!("Failed sending keepalive: {:?}", err);
+        }
+
+        tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+    });
 
     // Wait until error or EOS
     let bus = pipeline.bus().unwrap();
@@ -417,10 +473,12 @@ fn gstreamer_main() -> anyhow::Result<()> {
             MessageView::StateChanged(state) => {
                 println!("State change: {:?}", state);
             }
-            _ => {}
+            v => {
+                println!("Woop: {:?}", v)
+            }
         }
     }
-
+    keepalive_task.abort();
     // Shutdown pipeline
     pipeline
         .set_state(gst::State::Null)

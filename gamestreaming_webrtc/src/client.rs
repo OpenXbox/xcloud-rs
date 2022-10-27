@@ -206,6 +206,12 @@ impl GamestreamingClient {
             .map_err(GsError::ApiError)?;
         self.api.get_ice(session).map_err(GsError::ApiError)
     }
+
+    pub fn keepalive(&self, session: &SessionResponse) -> Result<(), GsError> {
+        self.api.send_keepalive(session)
+            .map_err(GsError::ApiError)?;
+        Ok(())
+    }
 }
 
 #[cfg(test)]
