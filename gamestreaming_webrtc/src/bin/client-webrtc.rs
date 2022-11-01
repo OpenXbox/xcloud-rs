@@ -310,6 +310,43 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .await;
     }
 
+    // Start task that listens to ChannelProxy for messages to send out
+    let channel_proxy_clone = channel_proxy.clone();
+    let channel_recv_loop = tokio::spawn(async move {
+        let mut receiver = channel_proxy_clone.lock().await.get_receiver();
+        loop {
+            let recv_res = match receiver.recv().await {
+                Some((chan_type, msg)) => {
+                    match channel_defs.get(&chan_type) {
+                        Some(chan) => {
+                            match msg {
+                                ChannelExchangeMsg::DataChannel(bla) => {
+                                    match bla {
+                                        DataChannelMsg::Bytes(msg_bytes) => chan.send(&msg_bytes.into()).await,
+                                        DataChannelMsg::String(msg_str) => chan.send_text(msg_str).await,
+                                    }
+                                },
+                                ChannelExchangeMsg::Event(evt) => {
+                                    todo!("Events currently unhandled - Will they be even needed?")
+                                },
+                            }
+                        },
+                        None => {
+                            Err(webrtc::Error::new("Channel not found".to_owned()))
+                        },
+                    }
+                },
+                None => {
+                    Ok(0)
+                }
+            };
+
+            if let Err(err) = recv_res {
+                eprintln!("Failed to receive message from ChannelProxy")
+            }
+        }
+    });
+
     let (video_file, audio_file) = ("video.mkv", "audio.ogg");
 
     let h264_writer: Arc<Mutex<dyn webrtc::media::io::Writer + Send + Sync>> =
