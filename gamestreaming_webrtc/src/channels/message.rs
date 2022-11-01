@@ -1,3 +1,6 @@
+use std::{pin::Pin, future::Future, sync::{Arc}};
+use tokio::sync::Mutex;
+
 use super::base::{
     ChannelExchangeMsg, ChannelType, DataChannelMsg, DataChannelParams, GssvChannel,
     GssvChannelProperties,
@@ -6,9 +9,11 @@ use async_trait::async_trait;
 use serde_json::{json, Value};
 use tokio::sync::mpsc;
 
-#[derive(Debug)]
+pub type OnHandshakeAckHdlrFn = Box<dyn (FnOnce() -> Pin<Box<dyn Future<Output = ()> + Send + 'static>>) + Send + Sync>;
+
 pub struct MessageChannel {
     sender: mpsc::Sender<(ChannelType, ChannelExchangeMsg)>,
+    on_handshake_ack_handler: Arc<Mutex<Option<OnHandshakeAckHdlrFn>>>,
 }
 
 impl GssvChannelProperties for MessageChannel {
@@ -122,7 +127,15 @@ impl GssvChannel for MessageChannel {
 
 impl MessageChannel {
     pub fn new(sender: mpsc::Sender<(ChannelType, ChannelExchangeMsg)>) -> Self {
-        Self { sender }
+        Self {
+            sender,
+            on_handshake_ack_handler: Default::default(),
+        }
+    }
+
+    pub(crate) async fn on_handshake_ack(&self, f: OnHandshakeAckHdlrFn) {
+        let mut handler = self.on_handshake_ack_handler.lock().await;
+        *handler = Some(f);
     }
 
     async fn start(&self) -> Result<(), Box<dyn std::error::Error>> {
@@ -167,5 +180,14 @@ impl MessageChannel {
         });
 
         self.send_message(transaction.into()).await
+    }
+}
+
+impl std::fmt::Debug for MessageChannel {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("MessageChannel")
+            .field("sender", &self.sender)
+            .field("on_handshake_ack_handler", &"<>")
+            .finish()
     }
 }

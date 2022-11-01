@@ -75,7 +75,7 @@ impl InputChannel {
         self.time_origin.elapsed().as_secs_f64()
     }
 
-    async fn start(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+    pub(crate) async fn start(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         let packet = InputPacket::new(
             self.next_sequence_num(),
             // Fill timestamp

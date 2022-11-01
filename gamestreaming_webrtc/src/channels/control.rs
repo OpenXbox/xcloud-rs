@@ -15,7 +15,7 @@ impl ControlChannel {
         Self { sender }
     }
 
-    async fn start(&self) -> Result<(), Box<dyn std::error::Error>> {
+    pub(crate) async fn start(&self) -> Result<(), Box<dyn std::error::Error>> {
         let auth_request = json!({
             "message":"authorizationRequest",
             "accessKey":"4BDB3609-C1F1-4195-9B37-FEFF45DA8B8E",

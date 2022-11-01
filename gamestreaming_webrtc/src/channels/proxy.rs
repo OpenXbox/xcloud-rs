@@ -10,6 +10,7 @@ use super::{
 };
 use tokio::sync::mpsc;
 
+#[derive(Debug)]
 pub struct ChannelProxy {
     input: InputChannel,
     control: ControlChannel,
@@ -33,13 +34,25 @@ impl ChannelProxy {
 
     pub fn new() -> Self {
         let (tx, rx) = mpsc::channel(10);
-        Self {
+
+        let mut this = Self {
             input: InputChannel::new(tx.clone()),
             control: ControlChannel::new(tx.clone()),
             message: MessageChannel::new(tx.clone()),
             chat: ChatChannel::new(tx.clone()),
             channel_to_client_mpsc: (tx, rx),
-        }
+        };
+
+        // Attach callback function
+        this.message.on_handshake_ack(Box::new(move || {
+            println!("Message channel received handshake ack, starting input/control messaging");
+            this.input.start();
+            this.control.start();
+
+            Box::pin(async {})
+        }));
+
+        this
     }
 
     /// Used to receive messages from ChannelProxy in client
