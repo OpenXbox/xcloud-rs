@@ -1,4 +1,7 @@
-#[derive(Debug)]
+use async_trait::async_trait;
+use tokio::sync::mpsc;
+
+#[derive(Debug, Eq, PartialEq, Hash, Clone, Copy)]
 pub enum ChannelType {
     Chat,
     Control,
@@ -8,6 +11,20 @@ pub enum ChannelType {
     Video,
 }
 
+impl ToString for ChannelType {
+    fn to_string(&self) -> String {
+        let res = match self {
+            ChannelType::Chat => "chat",
+            ChannelType::Control => "control",
+            ChannelType::Input => "input",
+            ChannelType::Message => "message",
+            ChannelType::Audio => "audio",
+            ChannelType::Video => "video",
+        };
+        res.to_owned()
+    }
+}
+
 #[derive(Debug)]
 pub struct GssvChannelEvent(String);
 
@@ -15,6 +32,12 @@ pub struct GssvChannelEvent(String);
 pub enum DataChannelMsg {
     String(String),
     Bytes(Vec<u8>),
+}
+
+#[derive(Debug)]
+pub enum ChannelExchangeMsg {
+    Event(GssvChannelEvent),
+    DataChannel(DataChannelMsg),
 }
 
 impl From<serde_json::Value> for DataChannelMsg {
@@ -36,17 +59,48 @@ impl TryFrom<&DataChannelMsg> for serde_json::Value {
     }
 }
 
-pub trait GssvChannel {
-    fn name() -> &'static str;
-    fn on_open(&self);
-    fn on_close(&self);
-    fn start(&mut self) {
-        todo!("Channel start not implemented")
+#[derive(Debug, Default, Clone, Copy, Eq, PartialEq)]
+pub struct DataChannelParams {
+    pub id: i32,
+    pub protocol: &'static str,
+    pub is_ordered: Option<bool>,
+}
+
+pub trait GssvChannelProperties {
+    const TYPE: ChannelType;
+    const PARAMS: DataChannelParams;
+    fn sender(&self) -> &mpsc::Sender<(ChannelType, ChannelExchangeMsg)>;
+}
+
+#[async_trait]
+pub trait GssvChannel
+where
+    Self: GssvChannelProperties,
+{
+    async fn on_open(&self) -> Result<(), Box<dyn std::error::Error>> {
+        Ok(())
     }
-    fn on_message(&self, msg: &DataChannelMsg) -> Result<(), Box<dyn std::error::Error>> {
-        println!("on_message ({}): {:?}", Self::name(), msg);
-        todo!()
+
+    async fn on_close(&self) -> Result<(), Box<dyn std::error::Error>> {
+        Ok(())
     }
-    fn send_message(&self, msg: &DataChannelMsg);
-    fn send_event(&self, event: &GssvChannelEvent);
+
+    async fn on_message(&self, msg: &DataChannelMsg) -> Result<(), Box<dyn std::error::Error>> {
+        let msg = format!("Unhandled on_message ({:?}): {:?}", Self::TYPE, msg);
+        Err(msg.into())
+    }
+
+    async fn send_message(&self, msg: DataChannelMsg) -> Result<(), Box<dyn std::error::Error>> {
+        self.sender()
+            .send((Self::TYPE, ChannelExchangeMsg::DataChannel(msg)))
+            .await
+            .map_err(|e| e.into())
+    }
+
+    async fn send_event(&self, event: GssvChannelEvent) -> Result<(), Box<dyn std::error::Error>> {
+        self.sender()
+            .send((Self::TYPE, ChannelExchangeMsg::Event(event)))
+            .await
+            .map_err(|e| e.into())
+    }
 }

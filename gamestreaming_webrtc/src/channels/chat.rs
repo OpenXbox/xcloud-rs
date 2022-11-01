@@ -1,28 +1,32 @@
-use super::base::{DataChannelMsg, GssvChannel, GssvChannelEvent};
-pub struct ChatChannel;
+use async_trait::async_trait;
+use tokio::sync::mpsc;
 
-impl GssvChannel for ChatChannel {
-    fn name() -> &'static str {
-        "Chat"
-    }
+use super::base::{
+    ChannelExchangeMsg, ChannelType, DataChannelParams, GssvChannel, GssvChannelProperties,
+};
 
-    fn on_open(&self) {
-        todo!()
-    }
+#[derive(Debug)]
+pub struct ChatChannel {
+    sender: mpsc::Sender<(ChannelType, ChannelExchangeMsg)>,
+}
 
-    fn on_close(&self) {
-        todo!()
-    }
-
-    fn start(&mut self) {
-        todo!()
-    }
-
-    fn send_message(&self, msg: &DataChannelMsg) {
-        todo!()
-    }
-
-    fn send_event(&self, event: &GssvChannelEvent) {
-        todo!()
+impl ChatChannel {
+    pub fn new(sender: mpsc::Sender<(ChannelType, ChannelExchangeMsg)>) -> Self {
+        Self { sender }
     }
 }
+
+impl GssvChannelProperties for ChatChannel {
+    const TYPE: ChannelType = ChannelType::Chat;
+    const PARAMS: DataChannelParams = DataChannelParams {
+        id: 6,
+        protocol: "chatV1",
+        is_ordered: None,
+    };
+    fn sender(&self) -> &mpsc::Sender<(ChannelType, ChannelExchangeMsg)> {
+        &self.sender
+    }
+}
+
+#[async_trait]
+impl GssvChannel for ChatChannel {}

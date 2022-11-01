@@ -1,44 +1,46 @@
-use super::base::{DataChannelMsg, GssvChannel, GssvChannelEvent};
+use super::base::{
+    ChannelExchangeMsg, ChannelType, DataChannelMsg, DataChannelParams, GssvChannel,
+    GssvChannelProperties,
+};
+use async_trait::async_trait;
 use serde_json::{json, Value};
+use tokio::sync::mpsc;
 
-pub struct MessageChannel;
+#[derive(Debug)]
+pub struct MessageChannel {
+    sender: mpsc::Sender<(ChannelType, ChannelExchangeMsg)>,
+}
 
-impl GssvChannel for MessageChannel {
-    fn name() -> &'static str {
-        "Message"
+impl GssvChannelProperties for MessageChannel {
+    const TYPE: ChannelType = ChannelType::Message;
+    const PARAMS: DataChannelParams = DataChannelParams {
+        id: 5,
+        protocol: "messageV1",
+        is_ordered: None,
+    };
+    fn sender(&self) -> &mpsc::Sender<(ChannelType, ChannelExchangeMsg)> {
+        &self.sender
     }
+}
 
-    fn on_open(&self) {
+#[async_trait]
+impl GssvChannel for MessageChannel {
+    async fn on_open(&self) -> Result<(), Box<dyn std::error::Error>> {
         let handshake = json!({
             "type":"Handshake",
             "version":"messageV1",
             "id":"0ab125e2-6eee-4687-a2f4-5cfb347f0643",
             "cv":"",
         });
-        self.send_message(&handshake.into())
+        self.send_message(handshake.into()).await
     }
 
-    fn on_close(&self) {
+    async fn on_close(&self) -> Result<(), Box<dyn std::error::Error>> {
         todo!()
     }
 
-    fn start(&mut self) {
-        let auth_request = json!({
-            "message":"authorizationRequest",
-            "accessKey":"4BDB3609-C1F1-4195-9B37-FEFF45DA8B8E",
-        });
-        self.send_message(&auth_request.into());
-
-        let gamepad_request = json!({
-            "message": "gamepadChanged",
-            "gamepadIndex": 0,
-            "wasAdded": true,
-        });
-        self.send_message(&gamepad_request.into())
-    }
-
-    fn on_message(&self, msg: &DataChannelMsg) -> Result<(), Box<dyn std::error::Error>> {
-        println!("on_message ({}): {:?}", Self::name(), msg);
+    async fn on_message(&self, msg: &DataChannelMsg) -> Result<(), Box<dyn std::error::Error>> {
+        println!("on_message ({:?}): {:?}", Self::TYPE, msg);
 
         let json_msg: Value = msg.try_into()?;
         let msg_type = json_msg.get("type").unwrap().as_str().unwrap();
@@ -67,31 +69,31 @@ impl GssvChannel for MessageChannel {
                         // Possible options: Keyboard, PurchaseModal
                     }),
                 )?;
-                self.send_message(&ui_config);
+                self.send_message(ui_config).await?;
 
                 let client_config = Self::generate_message(
                     "/streaming/properties/clientappinstallidchanged",
                     &json!({ "clientAppInstallId": "4b8f472d-2c82-40e8-895d-bcd6a6ec7e9b" }),
                 )?;
-                self.send_message(&client_config);
+                self.send_message(client_config).await?;
 
                 let orientation_config = Self::generate_message(
                     "/streaming/characteristics/orientationchanged",
                     &json!({ "orientation": 0 }),
                 )?;
-                self.send_message(&orientation_config);
+                self.send_message(orientation_config).await?;
 
                 let touch_config = Self::generate_message(
                     "/streaming/characteristics/touchinputenabledchanged",
                     &json!({ "touchInputEnabled": /* self.getClient()._config.ui_touchenabled || */ false }),
                 )?;
-                self.send_message(&touch_config);
+                self.send_message(touch_config).await?;
 
                 let device_config = Self::generate_message(
                     "/streaming/characteristics/clientdevicecapabilities",
                     &json!({}),
                 )?;
-                self.send_message(&device_config);
+                self.send_message(device_config).await?;
 
                 let dimensions_config = Self::generate_message(
                     "/streaming/characteristics/dimensionschanged",
@@ -107,26 +109,37 @@ impl GssvChannel for MessageChannel {
                         "supportsCustomResolution":true,
                     }),
                 )?;
-                self.send_message(&dimensions_config);
+                self.send_message(dimensions_config).await?;
             }
             val => {
-                return Err(format!("[{}] Unhandled message type: {}", Self::name(), val).into());
+                return Err(format!("[{:?}] Unhandled message type: {}", Self::TYPE, val).into());
             }
         };
 
         Ok(())
     }
-
-    fn send_message(&self, msg: &DataChannelMsg) {
-        todo!()
-    }
-
-    fn send_event(&self, event: &GssvChannelEvent) {
-        todo!()
-    }
 }
 
 impl MessageChannel {
+    pub fn new(sender: mpsc::Sender<(ChannelType, ChannelExchangeMsg)>) -> Self {
+        Self { sender }
+    }
+
+    async fn start(&self) -> Result<(), Box<dyn std::error::Error>> {
+        let auth_request = json!({
+            "message":"authorizationRequest",
+            "accessKey":"4BDB3609-C1F1-4195-9B37-FEFF45DA8B8E",
+        });
+        self.send_message(auth_request.into()).await?;
+
+        let gamepad_request = json!({
+            "message": "gamepadChanged",
+            "gamepadIndex": 0,
+            "wasAdded": true,
+        });
+        self.send_message(gamepad_request.into()).await
+    }
+
     fn generate_message(
         path: &str,
         data: &Value,
@@ -141,7 +154,11 @@ impl MessageChannel {
         .into())
     }
 
-    fn send_transaction(&self, id: &str, data: &Value) -> Result<(), Box<dyn std::error::Error>> {
+    async fn send_transaction(
+        &self,
+        id: &str,
+        data: &Value,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let transaction = json!({
             "type": "TransactionComplete",
             "content": serde_json::to_string(data)?,
@@ -149,7 +166,6 @@ impl MessageChannel {
             "cv": "",
         });
 
-        self.send_message(&transaction.into());
-        Ok(())
+        self.send_message(transaction.into()).await
     }
 }

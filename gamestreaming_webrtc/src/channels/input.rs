@@ -1,69 +1,68 @@
-use deku::{DekuContainerRead, DekuContainerWrite};
-use tokio::time::{Instant, Interval};
+use std::default::Default;
 
-use super::base::{DataChannelMsg, GssvChannel, GssvChannelEvent};
+use async_trait::async_trait;
+use deku::{DekuContainerRead, DekuContainerWrite};
+use tokio::{sync::mpsc, time::Instant};
+
+use super::base::{
+    ChannelExchangeMsg, ChannelType, DataChannelMsg, DataChannelParams, GssvChannel,
+    GssvChannelProperties,
+};
 use crate::packets::input::{
     ClientMetadataReport, GamepadData, GamepadReport, InputMetadataEntry, InputPacket,
     MetadataReport,
 };
 
+#[derive(Debug)]
 pub struct InputChannel {
     time_origin: Instant,
     input_sequence_num: u32,
     metadata_queue: Vec<InputMetadataEntry>,
     input_frames: Vec<GamepadData>,
-    input_interval: Interval,
     rumble_enabled: bool,
+    sender: mpsc::Sender<(ChannelType, ChannelExchangeMsg)>,
 }
 
+impl GssvChannelProperties for InputChannel {
+    const TYPE: ChannelType = ChannelType::Input;
+    const PARAMS: DataChannelParams = DataChannelParams {
+        id: 3,
+        protocol: "1.0",
+        is_ordered: Some(true),
+    };
+    fn sender(&self) -> &mpsc::Sender<(ChannelType, ChannelExchangeMsg)> {
+        &self.sender
+    }
+}
+
+#[async_trait]
 impl GssvChannel for InputChannel {
-    fn name() -> &'static str {
-        "Input"
-    }
-
-    fn on_open(&self) {
-        todo!()
-    }
-
-    fn on_close(&self) {
-        todo!()
-    }
-
-    fn start(&mut self) {
-        let packet = InputPacket::new(
-            self.next_sequence_num(),
-            // Fill timestamp
-            self.timestamp(),
-            None,
-            None,
-            Some(ClientMetadataReport::default()),
-        );
-        self.send_message(&DataChannelMsg::Bytes(packet.to_bytes().unwrap()));
-    }
-
-    fn on_message(&self, msg: &DataChannelMsg) -> Result<(), Box<dyn std::error::Error>> {
-        println!("on_message ({}): {:?}", Self::name(), msg);
+    async fn on_message(&self, msg: &DataChannelMsg) -> Result<(), Box<dyn std::error::Error>> {
+        println!("on_message ({:?}): {:?}", Self::TYPE, msg);
 
         match msg {
             DataChannelMsg::Bytes(bytes) => {
                 let (_, input_packet) = InputPacket::from_bytes((bytes, 0))?;
-                println!("[{}] Received packet: {:?}", Self::name(), input_packet);
+                println!("[{:?}] Received packet: {:?}", Self::TYPE, input_packet);
                 todo!("Handle input packet")
             }
-            val => Err(format!("[{}] Unhandled message type: {:?}", Self::name(), val).into()),
+            val => Err(format!("[{:?}] Unhandled message type: {:?}", Self::TYPE, val).into()),
         }
-    }
-
-    fn send_message(&self, msg: &DataChannelMsg) {
-        todo!()
-    }
-
-    fn send_event(&self, event: &GssvChannelEvent) {
-        todo!()
     }
 }
 
 impl InputChannel {
+    pub fn new(sender: mpsc::Sender<(ChannelType, ChannelExchangeMsg)>) -> Self {
+        Self {
+            sender,
+            time_origin: Instant::now(),
+            input_sequence_num: 0,
+            metadata_queue: vec![],
+            input_frames: vec![],
+            rumble_enabled: true,
+        }
+    }
+
     fn next_sequence_num(&mut self) -> u32 {
         let current = self.input_sequence_num;
         self.input_sequence_num += 1;
@@ -74,6 +73,19 @@ impl InputChannel {
     /// channel.
     fn timestamp(&self) -> f64 {
         self.time_origin.elapsed().as_secs_f64()
+    }
+
+    async fn start(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        let packet = InputPacket::new(
+            self.next_sequence_num(),
+            // Fill timestamp
+            self.timestamp(),
+            None,
+            None,
+            Some(ClientMetadataReport::default()),
+        );
+        self.send_message(DataChannelMsg::Bytes(packet.to_bytes().unwrap()))
+            .await
     }
 
     /// Handle incoming gamepad data.

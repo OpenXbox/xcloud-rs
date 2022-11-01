@@ -31,20 +31,13 @@ use webrtc::rtp_transceiver::rtp_transceiver_direction::RTCRtpTransceiverDirecti
 use webrtc::rtp_transceiver::RTCRtpTransceiverInit;
 use webrtc::track::track_remote::TrackRemote;
 
-use gamestreaming_webrtc::{GamestreamingClient, Platform};
+use gamestreaming_webrtc::{ChannelProxy, ChannelType, GamestreamingClient, Platform};
 use xal::utils::TokenStore;
 
 #[macro_use]
 extern crate lazy_static;
 
 const TOKENS_FILEPATH: &str = "tokens.json";
-
-#[derive(Debug, Default, Clone, Copy, Eq, PartialEq)]
-struct DataChannelParams {
-    id: i32,
-    protocol: &'static str,
-    is_ordered: Option<bool>,
-}
 
 lazy_static! {
     static ref PEER_CONNECTION_MUTEX: Arc<Mutex<Option<Arc<RTCPeerConnection>>>> =
@@ -215,48 +208,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }))
         .await;
 
-    let channel_params: HashMap<String, DataChannelParams> = [
-        (
-            "input".into(),
-            DataChannelParams {
-                id: 3,
-                protocol: "1.0".into(),
-                is_ordered: Some(true),
-            },
-        ),
-        (
-            "control".into(),
-            DataChannelParams {
-                id: 4,
-                protocol: "controlV1".into(),
-                is_ordered: None,
-            },
-        ),
-        (
-            "message".into(),
-            DataChannelParams {
-                id: 5,
-                protocol: "messageV1".into(),
-                is_ordered: None,
-            },
-        ),
-        (
-            "chat".into(),
-            DataChannelParams {
-                id: 6,
-                protocol: "chatV1".into(),
-                is_ordered: None,
-            },
-        ),
-    ]
-    .into();
-
-    let mut channel_defs: HashMap<String, Arc<RTCDataChannel>> = HashMap::new();
+    let channel_proxy = ChannelProxy::new();
+    let mut channel_defs: HashMap<ChannelType, Arc<RTCDataChannel>> = HashMap::new();
     // Create channels and store in HashMap
-    for (name, params) in channel_params.into_iter() {
+    for (chan_type, params) in ChannelProxy::data_channel_create_params() {
         let chan = peer_connection
             .create_data_channel(
-                &name,
+                &chan_type.to_string(),
                 Some(RTCDataChannelInit {
                     ordered: params.is_ordered,
                     protocol: Some(params.protocol.to_owned()),
@@ -265,7 +223,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             )
             .await?;
 
-        channel_defs.insert(name, chan);
+        channel_defs.insert(chan_type.to_owned(), chan);
     }
 
     // Allow us to receive 1 audio track, and 1 video track
@@ -310,7 +268,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Register channel opening / on message handling
 
-    for (name, channel) in channel_defs.into_iter() {
+    for (chan_type, channel) in channel_defs.into_iter() {
         let d1 = Arc::clone(&channel);
         channel
             .on_open(Box::new(move || {
@@ -338,7 +296,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }))
             .await;
 
-        let message_label = name.clone();
         channel
             .on_message(Box::new(move |msg: DataChannelMessage| {
                 let msg_str = match String::from_utf8(msg.data.to_vec()) {
@@ -347,10 +304,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         format!("Binary={:?}", msg.data)
                     }
                 };
-                println!(
-                    "Message from DataChannel '{}': '{}'",
-                    message_label, msg_str
-                );
+                println!("Message from DataChannel '{:?}': '{}'", chan_type, msg_str);
                 Box::pin(async {})
             }))
             .await;
