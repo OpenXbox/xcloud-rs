@@ -26,7 +26,10 @@ impl ToString for ChannelType {
 }
 
 #[derive(Debug)]
-pub struct GssvChannelEvent(String);
+pub enum GssvChannelEvent {
+    ChannelOpen,
+    ChannelClose,
+}
 
 #[derive(Debug)]
 pub enum DataChannelMsg {

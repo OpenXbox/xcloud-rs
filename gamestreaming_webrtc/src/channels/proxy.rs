@@ -1,3 +1,5 @@
+use crate::GssvChannelEvent;
+
 use super::{
     base::{
         ChannelExchangeMsg, ChannelType, DataChannelMsg, DataChannelParams, GssvChannel,
@@ -35,24 +37,13 @@ impl ChannelProxy {
     pub fn new() -> Self {
         let (tx, rx) = mpsc::channel(10);
 
-        let mut this = Self {
+        Self {
             input: InputChannel::new(tx.clone()),
             control: ControlChannel::new(tx.clone()),
             message: MessageChannel::new(tx.clone()),
             chat: ChatChannel::new(tx.clone()),
             channel_to_client_mpsc: (tx, rx),
-        };
-
-        // Attach callback function
-        this.message.on_handshake_ack(Box::new(move || {
-            println!("Message channel received handshake ack, starting input/control messaging");
-            this.input.start();
-            this.control.start();
-
-            Box::pin(async {})
-        }));
-
-        this
+        }
     }
 
     /// Used to receive messages from ChannelProxy in client
@@ -60,32 +51,60 @@ impl ChannelProxy {
         self.channel_to_client_mpsc.1
     }
 
+    pub async fn handle_event(
+        &mut self,
+        typ: ChannelType,
+        event: GssvChannelEvent,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        match typ {
+            ChannelType::Input => {
+                let channel = &self.input;
+                match event {
+                    GssvChannelEvent::ChannelOpen => channel.on_open().await,
+                    GssvChannelEvent::ChannelClose => channel.on_close().await,
+                }
+            },
+            ChannelType::Control => {
+                let channel = &self.control;
+                match event {
+                    GssvChannelEvent::ChannelOpen => channel.on_open().await,
+                    GssvChannelEvent::ChannelClose => channel.on_close().await,
+                }
+            },
+            ChannelType::Message => {
+                let channel = &self.message;
+                match event {
+                    GssvChannelEvent::ChannelOpen => channel.on_open().await,
+                    GssvChannelEvent::ChannelClose => channel.on_close().await,
+                }
+            },
+            ChannelType::Chat => {
+                let channel = &self.chat;
+                match event {
+                    GssvChannelEvent::ChannelOpen => channel.on_open().await,
+                    GssvChannelEvent::ChannelClose => channel.on_close().await,
+                }
+            },
+            _ => {
+                return Err(format!("Unhandled channel type {:?}", typ).into());
+            },
+        }
+    }
+
     pub async fn handle_message(
         &mut self,
         typ: ChannelType,
-        msg: ChannelExchangeMsg,
+        msg: DataChannelMsg,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        /*
-        let channel: Box<dyn GssvChannel> = match typ {
-            ChannelType::Input => self.input,
-            ChannelType::Control => self.control,
-            ChannelType::Message => self.message,
-            ChannelType::Chat => self.chat,
+        match typ {
+            ChannelType::Input => self.input.on_message(&msg).await,
+            ChannelType::Control => self.control.on_message(&msg).await,
+            ChannelType::Message => self.message.on_message(&msg).await,
+            ChannelType::Chat => self.chat.on_message(&msg).await,
             _ => {
-                return Err(format!("Unhandled channel type {:?}", typ));
+                return Err(format!("Unhandled channel type {:?}", typ).into());
             },
-        };
-
-        match msg {
-            ChannelExchangeMsg::DataChannel(msg) => {
-                channel.on_message(&msg).await
-            },
-            ChannelExchangeMsg::Event(evt) => {
-                channel.on_event(&evt)
-            }
         }
-        */
-        Ok(())
     }
 }
 

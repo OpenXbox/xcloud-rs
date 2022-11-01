@@ -6,7 +6,7 @@ mod packets;
 mod serde_helpers;
 
 pub use channels::{
-    base::{ChannelType, DataChannelParams, GssvChannel, GssvChannelEvent, GssvChannelProperties},
+    base::{ChannelType, DataChannelParams, DataChannelMsg, ChannelExchangeMsg, GssvChannel, GssvChannelEvent, GssvChannelProperties},
     proxy::ChannelProxy,
 };
 pub use client::{GamestreamingClient, Platform};

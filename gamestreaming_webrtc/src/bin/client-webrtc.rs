@@ -17,8 +17,6 @@ use webrtc::interceptor::registry::Registry;
 use webrtc::media::io::h264_writer::H264Writer;
 use webrtc::media::io::ogg_writer::OggWriter;
 use webrtc::peer_connection::configuration::RTCConfiguration;
-use webrtc::peer_connection::math_rand_alpha;
-use webrtc::peer_connection::offer_answer_options::RTCOfferOptions;
 use webrtc::peer_connection::peer_connection_state::RTCPeerConnectionState;
 use webrtc::peer_connection::sdp::session_description::RTCSessionDescription;
 use webrtc::peer_connection::RTCPeerConnection;
@@ -31,7 +29,7 @@ use webrtc::rtp_transceiver::rtp_transceiver_direction::RTCRtpTransceiverDirecti
 use webrtc::rtp_transceiver::RTCRtpTransceiverInit;
 use webrtc::track::track_remote::TrackRemote;
 
-use gamestreaming_webrtc::{ChannelProxy, ChannelType, GamestreamingClient, Platform};
+use gamestreaming_webrtc::{ChannelProxy, ChannelType, GamestreamingClient, Platform, DataChannelMsg, ChannelExchangeMsg, GssvChannelEvent};
 use xal::utils::TokenStore;
 
 #[macro_use]
@@ -208,7 +206,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }))
         .await;
 
-    let channel_proxy = ChannelProxy::new();
+    let channel_proxy = Arc::new(Mutex::new(ChannelProxy::new()));
     let mut channel_defs: HashMap<ChannelType, Arc<RTCDataChannel>> = HashMap::new();
     // Create channels and store in HashMap
     for (chan_type, params) in ChannelProxy::data_channel_create_params() {
@@ -266,46 +264,48 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }))
         .await;
 
-    // Register channel opening / on message handling
-
+    // Register channel open / close / message handling
     for (chan_type, channel) in channel_defs.into_iter() {
-        let d1 = Arc::clone(&channel);
+        let channel_proxy_clone = channel_proxy.clone();
+        let channel_clone = Arc::clone(&channel);
         channel
             .on_open(Box::new(move || {
-                println!("Data channel '{}'-'{}' open", d1.label(), d1.id());
-
-                let d2 = Arc::clone(&d1);
+                let channel_proxy = channel_proxy_clone.clone();
+                let channel = Arc::clone(&channel_clone);
                 Box::pin(async move {
-                    let mut result = Result::<usize, webrtc::Error>::Ok(0);
-                    while result.is_ok() {
-                        let timeout = tokio::time::sleep(Duration::from_secs(5));
-                        tokio::pin!(timeout);
-
-                        tokio::select! {
-                            _ = timeout.as_mut() =>{
-                                /*
-                                From example code - Sending random strings over datachannel
-                                let message = math_rand_alpha(15);
-                                println!("Sending '{}'", message);
-                                result = d2.send_text(message).await.map_err(Into::into);
-                                */
-                            }
-                        };
-                    }
+                    println!("Data channel '{}'-'{}' open", channel.label(), channel.id());
+                    let _ = channel_proxy.lock().await.handle_event(chan_type, GssvChannelEvent::ChannelOpen).await;
                 })
             }))
             .await;
 
+        let channel_proxy_clone = channel_proxy.clone();
+        let channel_clone = Arc::clone(&channel);
+        channel
+            .on_close(Box::new(move || {
+                let channel_proxy = channel_proxy_clone.clone();
+                let channel = Arc::clone(&channel_clone);
+                Box::pin(async move {
+                    println!("Data channel '{}'-'{}' close", channel.label(), channel.id());
+                    let _ = channel_proxy.lock().await.handle_event(chan_type, GssvChannelEvent::ChannelClose).await;
+                })
+            }))
+            .await;
+
+        let channel_proxy_clone = channel_proxy.clone();
         channel
             .on_message(Box::new(move |msg: DataChannelMessage| {
-                let msg_str = match String::from_utf8(msg.data.to_vec()) {
-                    Ok(str) => str,
+                let channel_proxy = channel_proxy_clone.clone();
+                let msg = match String::from_utf8(msg.data.to_vec()) {
+                    Ok(str) => DataChannelMsg::String(str),
                     _ => {
-                        format!("Binary={:?}", msg.data)
+                        DataChannelMsg::Bytes(msg.data.to_vec())
                     }
                 };
-                println!("Message from DataChannel '{:?}': '{}'", chan_type, msg_str);
-                Box::pin(async {})
+                Box::pin(async move {
+                    println!("Message from DataChannel '{:?}': '{:?}'", chan_type, &msg);
+                    let _ = channel_proxy.lock().await.handle_message(chan_type, msg).await;
+                })
             }))
             .await;
     }
