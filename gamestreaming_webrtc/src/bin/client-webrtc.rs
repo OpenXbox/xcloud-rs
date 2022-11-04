@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use std::fs::File;
 use std::sync::Arc;
 use tokio::sync::{Mutex, Notify};
+use tokio::sync::mpsc;
 use tokio::time::Duration;
 use webrtc::api::interceptor_registry::register_default_interceptors;
 use webrtc::api::media_engine::{MediaEngine, MIME_TYPE_H264, MIME_TYPE_OPUS};
@@ -141,26 +142,6 @@ async fn create_peer_connection() -> Result<RTCPeerConnection, webrtc::Error> {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    
-    let mut gilrs = Gilrs::new()?;
-
-    // Iterate over all connected gamepads
-    for (_id, gamepad) in gilrs.gamepads() {
-        println!("{} is {:?}", gamepad.name(), gamepad.power_info());
-    }
-
-    let mut active_gamepad = None;
-
-    loop {
-        let mut gamepad_processor = GamepadProcessor::new();
-        // Examine new events
-        while let Some(Event { id, event, time }) = gilrs.next_event() {
-            println!("{:?} New event from {}: {:?}", time, id, event);
-            gamepad_processor.add_event(event);
-            active_gamepad = Some(id);
-        }
-    }
-
     // XCloud part
 
     let ts = match TokenStore::load(TOKENS_FILEPATH) {
@@ -228,11 +209,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }))
         .await;
 
-    let channel_proxy = Arc::new(Mutex::new(ChannelProxy::new()));
-    let mut channel_defs: HashMap<ChannelType, Arc<RTCDataChannel>> = HashMap::new();
+    let (channel_tx, mut channel_rx) = mpsc::channel(10);
+    let channel_proxy = Arc::new(Mutex::new(ChannelProxy::new(channel_tx)));
+    let mut channel_defs: Arc<Mutex<HashMap<ChannelType, Arc<RTCDataChannel>>>> = Arc::new(Mutex::new(HashMap::new()));
     // Create channels and store in HashMap
     for (chan_type, params) in ChannelProxy::data_channel_create_params() {
-        let chan = peer_connection
+        let channel = peer_connection
             .create_data_channel(
                 &chan_type.to_string(),
                 Some(RTCDataChannelInit {
@@ -243,7 +225,52 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             )
             .await?;
 
-        channel_defs.insert(chan_type.to_owned(), chan);
+        // Register channel open / close / message handling
+        let channel_clone = channel.clone();
+        let channel_proxy_clone = channel_proxy.clone();
+            channel
+            .on_open(Box::new(move || {
+                let channel_proxy = channel_proxy_clone.clone();
+                let channel = channel_clone.clone();
+                Box::pin(async move {
+                    println!("Data channel '{}'-'{}' open", channel.label(), channel.id());
+                    let _ = channel_proxy.lock().await.handle_event(*chan_type, GssvChannelEvent::ChannelOpen).await;
+                })
+            }))
+            .await;
+
+        let channel_clone = channel.clone();
+        let channel_proxy_clone = channel_proxy.clone();
+        channel
+            .on_close(Box::new(move || {
+                let channel_proxy = channel_proxy_clone.clone();
+                let channel = Arc::clone(&channel_clone);
+                Box::pin(async move {
+                    println!("Data channel '{}'-'{}' close", channel.label(), channel.id());
+                    let _ = channel_proxy.lock().await.handle_event(*chan_type, GssvChannelEvent::ChannelClose).await;
+                })
+            }))
+            .await;
+
+        let chan_type_clone = chan_type.clone();
+        let channel_proxy_clone = channel_proxy.clone();
+        channel
+            .on_message(Box::new(move |msg: DataChannelMessage| {
+                let channel_proxy = channel_proxy_clone.clone();
+                let msg = match String::from_utf8(msg.data.to_vec()) {
+                    Ok(str) => DataChannelMsg::String(str),
+                    _ => {
+                        DataChannelMsg::Bytes(msg.data.to_vec())
+                    }
+                };
+                Box::pin(async move {
+                    println!("Message from DataChannel '{:?}': '{:?}'", chan_type, &msg);
+                    let _ = channel_proxy.lock().await.handle_message(chan_type_clone, msg).await;
+                })
+            }))
+            .await;
+
+        channel_defs.lock().await.insert(chan_type.to_owned(), channel);
     }
 
     // Allow us to receive 1 audio track, and 1 video track
@@ -286,60 +313,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }))
         .await;
 
-    // Register channel open / close / message handling
-    for (chan_type, channel) in channel_defs.into_iter() {
-        let channel_proxy_clone = channel_proxy.clone();
-        let channel_clone = Arc::clone(&channel);
-        channel
-            .on_open(Box::new(move || {
-                let channel_proxy = channel_proxy_clone.clone();
-                let channel = Arc::clone(&channel_clone);
-                Box::pin(async move {
-                    println!("Data channel '{}'-'{}' open", channel.label(), channel.id());
-                    let _ = channel_proxy.lock().await.handle_event(chan_type, GssvChannelEvent::ChannelOpen).await;
-                })
-            }))
-            .await;
-
-        let channel_proxy_clone = channel_proxy.clone();
-        let channel_clone = Arc::clone(&channel);
-        channel
-            .on_close(Box::new(move || {
-                let channel_proxy = channel_proxy_clone.clone();
-                let channel = Arc::clone(&channel_clone);
-                Box::pin(async move {
-                    println!("Data channel '{}'-'{}' close", channel.label(), channel.id());
-                    let _ = channel_proxy.lock().await.handle_event(chan_type, GssvChannelEvent::ChannelClose).await;
-                })
-            }))
-            .await;
-
-        let channel_proxy_clone = channel_proxy.clone();
-        channel
-            .on_message(Box::new(move |msg: DataChannelMessage| {
-                let channel_proxy = channel_proxy_clone.clone();
-                let msg = match String::from_utf8(msg.data.to_vec()) {
-                    Ok(str) => DataChannelMsg::String(str),
-                    _ => {
-                        DataChannelMsg::Bytes(msg.data.to_vec())
-                    }
-                };
-                Box::pin(async move {
-                    println!("Message from DataChannel '{:?}': '{:?}'", chan_type, &msg);
-                    let _ = channel_proxy.lock().await.handle_message(chan_type, msg).await;
-                })
-            }))
-            .await;
-    }
-
-    // Start task that listens to ChannelProxy for messages to send out
-    let channel_proxy_clone = channel_proxy.clone();
+    // Start task that listens to mpsc receiver from ChannelProxy for messages to send out
+    let chan_defs_inner = channel_defs.clone();
     let channel_recv_loop = tokio::spawn(async move {
-        let mut receiver = channel_proxy_clone.lock().await.get_receiver();
         loop {
-            let recv_res = match receiver.recv().await {
+            let recv_res = match channel_rx.recv().await {
                 Some((chan_type, msg)) => {
-                    match channel_defs.get(&chan_type) {
+                    match chan_defs_inner.lock().await.get(&chan_type) {
                         Some(chan) => {
                             match msg {
                                 ChannelExchangeMsg::DataChannel(bla) => {
@@ -349,7 +329,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     }
                                 },
                                 ChannelExchangeMsg::Event(evt) => {
-                                    todo!("Events currently unhandled - Will they be even needed?")
+                                    todo!("Events currently unhandled - Will they be even needed? event={:?}", evt);
                                 },
                             }
                         },
@@ -364,7 +344,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             };
 
             if let Err(err) = recv_res {
-                eprintln!("Failed to receive message from ChannelProxy")
+                eprintln!("Failed to receive message from ChannelProxy, error: {:?}", err)
             }
         }
     });
@@ -493,6 +473,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             username_fragment: candidate.username_fragment,
         };
         peer_connection.add_ice_candidate(c).await?;
+    }
+
+    let mut gilrs = Gilrs::new()?;
+
+    // Iterate over all connected gamepads
+    for (_id, gamepad) in gilrs.gamepads() {
+        println!("{} is {:?}", gamepad.name(), gamepad.power_info());
+    }
+
+    let mut active_gamepad = None;
+
+    loop {
+        let mut gamepad_processor = GamepadProcessor::new();
+        // Examine new events
+        while let Some(Event { id, event, time }) = gilrs.next_event() {
+            println!("{:?} New event from {}: {:?}", time, id, event);
+            gamepad_processor.add_event(event);
+            active_gamepad = Some(id);
+        }
     }
 
     println!("Press ctrl-c to stop");

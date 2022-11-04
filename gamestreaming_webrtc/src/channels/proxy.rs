@@ -18,10 +18,7 @@ pub struct ChannelProxy {
     control: ControlChannel,
     message: MessageChannel,
     chat: ChatChannel,
-    channel_to_client_mpsc: (
-        mpsc::Sender<(ChannelType, ChannelExchangeMsg)>,
-        mpsc::Receiver<(ChannelType, ChannelExchangeMsg)>,
-    ),
+    channel_to_client_mpsc: mpsc::Sender<(ChannelType, ChannelExchangeMsg)>,
 }
 
 impl ChannelProxy {
@@ -34,21 +31,14 @@ impl ChannelProxy {
         ]
     }
 
-    pub fn new() -> Self {
-        let (tx, rx) = mpsc::channel(10);
-
+    pub fn new(sender: mpsc::Sender<(ChannelType, ChannelExchangeMsg)>) -> Self {
         Self {
-            input: InputChannel::new(tx.clone()),
-            control: ControlChannel::new(tx.clone()),
-            message: MessageChannel::new(tx.clone()),
-            chat: ChatChannel::new(tx.clone()),
-            channel_to_client_mpsc: (tx, rx),
+            input: InputChannel::new(sender.clone()),
+            control: ControlChannel::new(sender.clone()),
+            message: MessageChannel::new(sender.clone()),
+            chat: ChatChannel::new(sender.clone()),
+            channel_to_client_mpsc: sender,
         }
-    }
-
-    /// Used to receive messages from ChannelProxy in client
-    pub fn get_receiver(self) -> mpsc::Receiver<(ChannelType, ChannelExchangeMsg)> {
-        self.channel_to_client_mpsc.1
     }
 
     pub async fn handle_event(
@@ -105,11 +95,5 @@ impl ChannelProxy {
                 return Err(format!("Unhandled channel type {:?}", typ).into());
             },
         }
-    }
-}
-
-impl Default for ChannelProxy {
-    fn default() -> Self {
-        Self::new()
     }
 }
