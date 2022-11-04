@@ -14,6 +14,7 @@ serde_json = "1.0"
 thiserror = "1.0.37"
 chrono = "0.4.22"
 serde-aux = "4.0.0"
+async-trait = "0.1.58"
 
 # common for bins
 xal = { path = "../xal", optional = true }
@@ -22,7 +23,7 @@ xal = { path = "../xal", optional = true }
 webrtc = { version = "0.5.1", optional = true }
 lazy_static = { version = "1.4", optional = true }
 anyhow = { version = "1.0", optional = true }
-async-trait = "0.1.58"
+gilrs = { version = "0.9.0", optional = true }
 
 [dev-dependencies]
 xal = { path = "../xal"}
@@ -30,10 +31,11 @@ xal = { path = "../xal"}
 [features]
 webrtc-rs = ["dep:webrtc", "dep:lazy_static", "dep:anyhow"]
 xal = ["dep:xal"]
+gamepad = ["dep:gilrs"]
 
 [[example]]
 name = "gssv-api"
 
 [[bin]]
 name = "client-webrtc"
-required-features = ["xal", "webrtc-rs"]
+required-features = ["xal", "webrtc-rs", "gamepad"]

@@ -31,57 +31,57 @@ pub struct InputReportType {
 }
 
 #[allow(non_snake_case)]
-#[derive(Copy, Clone, DekuRead, DekuWrite, Debug, Eq, PartialEq)]
+#[derive(Debug, Default, Copy, Clone, DekuRead, DekuWrite, Eq, PartialEq)]
 #[deku(endian = "little")]
 pub struct GamepadButton {
     /// Bitmask: 0x8000
     #[deku(bits = "1")]
-    Unused: bool,
+    pub Unused: bool,
     /// Bitmask: 0x4000
     #[deku(bits = "1")]
-    RightThumb: bool,
+    pub RightThumb: bool,
     /// Bitmask: 0x2000
     #[deku(bits = "1")]
-    LeftThumb: bool,
+    pub LeftThumb: bool,
     /// Bitmask: 0x1000
     #[deku(bits = "1")]
-    RightShoulder: bool,
+    pub RightShoulder: bool,
     /// Bitmask: 0x800
     #[deku(bits = "1")]
-    LeftShoulder: bool,
+    pub LeftShoulder: bool,
     /// Bitmask: 0x400
     #[deku(bits = "1")]
-    DPadRight: bool,
+    pub DPadRight: bool,
     /// Bitmask: 0x200
     #[deku(bits = "1")]
-    DPadLeft: bool,
+    pub DPadLeft: bool,
     /// Bitmask: 0x100
     #[deku(bits = "1")]
-    DPadDown: bool,
+    pub DPadDown: bool,
     /// Bitmask: 0x80
     #[deku(bits = "1")]
-    DPadUp: bool,
+    pub DPadUp: bool,
     /// Bitmask: 0x40
     #[deku(bits = "1")]
-    Y: bool,
+    pub Y: bool,
     /// Bitmask: 0x20
     #[deku(bits = "1")]
-    X: bool,
+    pub X: bool,
     /// Bitmask: 0x10
     #[deku(bits = "1")]
-    B: bool,
+    pub B: bool,
     /// Bitmask: 0x08
     #[deku(bits = "1")]
-    A: bool,
+    pub A: bool,
     /// Bitmask: 0x04
     #[deku(bits = "1")]
-    View: bool,
+    pub View: bool,
     /// Bitmask: 0x02
     #[deku(bits = "1")]
-    Menu: bool,
+    pub Menu: bool,
     /// Bitmask: 0x01
     #[deku(bits = "1")]
-    Nexus: bool,
+    pub Nexus: bool,
 }
 
 #[derive(Debug, Eq, PartialEq, DekuRead, DekuWrite)]
@@ -118,7 +118,7 @@ pub struct MetadataReport {
     pub metadata: Vec<InputMetadataEntry>,
 }
 
-#[derive(Debug, Eq, PartialEq, DekuRead, DekuWrite)]
+#[derive(Debug, Default, Eq, PartialEq, DekuRead, DekuWrite, Copy, Clone)]
 pub struct GamepadData {
     pub gamepad_index: u8,
     pub button_mask: GamepadButton,

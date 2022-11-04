@@ -3,6 +3,6 @@
 pub(crate) mod base;
 mod chat;
 mod control;
-mod input;
+pub mod input;
 mod message;
 pub(crate) mod proxy;

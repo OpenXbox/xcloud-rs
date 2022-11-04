@@ -29,8 +29,9 @@ use webrtc::rtp_transceiver::rtp_transceiver_direction::RTCRtpTransceiverDirecti
 use webrtc::rtp_transceiver::RTCRtpTransceiverInit;
 use webrtc::track::track_remote::TrackRemote;
 
-use gamestreaming_webrtc::{ChannelProxy, ChannelType, GamestreamingClient, Platform, DataChannelMsg, ChannelExchangeMsg, GssvChannelEvent};
+use gamestreaming_webrtc::{ChannelProxy, ChannelType, GamestreamingClient, Platform, DataChannelMsg, ChannelExchangeMsg, GssvChannelEvent, GamepadData, GamepadProcessor};
 use xal::utils::TokenStore;
+use gilrs::{Gilrs, Event};
 
 #[macro_use]
 extern crate lazy_static;
@@ -137,8 +138,29 @@ async fn create_peer_connection() -> Result<RTCPeerConnection, webrtc::Error> {
     api.new_peer_connection(config).await
 }
 
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    
+    let mut gilrs = Gilrs::new()?;
+
+    // Iterate over all connected gamepads
+    for (_id, gamepad) in gilrs.gamepads() {
+        println!("{} is {:?}", gamepad.name(), gamepad.power_info());
+    }
+
+    let mut active_gamepad = None;
+
+    loop {
+        let mut gamepad_processor = GamepadProcessor::new();
+        // Examine new events
+        while let Some(Event { id, event, time }) = gilrs.next_event() {
+            println!("{:?} New event from {}: {:?}", time, id, event);
+            gamepad_processor.add_event(event);
+            active_gamepad = Some(id);
+        }
+    }
+
     // XCloud part
 
     let ts = match TokenStore::load(TOKENS_FILEPATH) {
