@@ -89,11 +89,28 @@ impl ChannelProxy {
         match typ {
             ChannelType::Input => self.input.on_message(&msg).await,
             ChannelType::Control => self.control.on_message(&msg).await,
-            ChannelType::Message => self.message.on_message(&msg).await,
+            ChannelType::Message => {
+                // Start control / input channel on HandshakeAck @ message-channel
+                if let DataChannelMsg::String(msg) = &msg {
+                    let msg: Result<serde_json::Value, serde_json::Error> = serde_json::from_str(msg);
+                    if let Ok(deserialized) = msg {
+                        if let Some(typ) = deserialized.get("Type") {
+                            if typ.is_string() && typ.as_str().unwrap() == "HandshakeAck" {
+                                self.input.start().await?;
+                                self.control.start().await?;
+                            }
+                        }
+                    }
+                }
+
+                self.message.on_message(&msg).await
+            },
             ChannelType::Chat => self.chat.on_message(&msg).await,
             _ => {
                 return Err(format!("Unhandled channel type {:?}", typ).into());
             },
         }
+
+
     }
 }
