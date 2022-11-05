@@ -24,6 +24,8 @@ webrtc = { version = "0.5.1", optional = true }
 lazy_static = { version = "1.4", optional = true }
 anyhow = { version = "1.0", optional = true }
 gilrs = { version = "0.9.0", optional = true }
+gstreamer = { version = "0.19.1", features = ["v1_16", "v1_18"], optional = true }
+gstreamer-app = { version = "0.19.0", features = [], optional = true }
 
 [dev-dependencies]
 xal = { path = "../xal"}
@@ -32,10 +34,11 @@ xal = { path = "../xal"}
 webrtc-rs = ["dep:webrtc", "dep:lazy_static", "dep:anyhow"]
 xal = ["dep:xal"]
 gamepad = ["dep:gilrs"]
+gstreamer = ["dep:gstreamer", "dep:gstreamer-app"]
 
 [[example]]
 name = "gssv-api"
 
 [[bin]]
 name = "client-webrtc"
-required-features = ["xal", "webrtc-rs", "gamepad"]
+required-features = ["xal", "webrtc-rs", "gamepad", "gstreamer"]

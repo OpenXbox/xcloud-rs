@@ -29,6 +29,9 @@ use webrtc::rtp_transceiver::rtp_receiver::RTCRtpReceiver;
 use webrtc::rtp_transceiver::rtp_transceiver_direction::RTCRtpTransceiverDirection;
 use webrtc::rtp_transceiver::RTCRtpTransceiverInit;
 use webrtc::track::track_remote::TrackRemote;
+use gstreamer as gst;
+use gstreamer_app as gst_app;
+use gst::{prelude::*, State};
 
 use gamestreaming_webrtc::{ChannelProxy, ChannelType, GamestreamingClient, Platform, DataChannelMsg, ChannelExchangeMsg, GssvChannelEvent, GamepadData, GamepadProcessor};
 use xal::utils::TokenStore;
@@ -142,6 +145,33 @@ async fn create_peer_connection() -> Result<RTCPeerConnection, webrtc::Error> {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Gstreamer
+    gst::init()?;
+
+    let pipeline = gst::Pipeline::default();
+
+    let appsrc_video = gst_app::AppSrc::builder()
+        .build();
+    let depay_video = gst::ElementFactory::make("rtph264depay").build()?;
+    let parse_video = gst::ElementFactory::make("h264parse").build()?;
+    let decode_video = gst::ElementFactory::make("avdec_h264").build()?;
+    let sink_video = gst::ElementFactory::make("autovideosink").build()?;
+
+    pipeline.add_many(&[appsrc_video.upcast_ref(), &depay_video, &parse_video, &decode_video, &sink_video])?;
+    gst::Element::link_many(&[appsrc_video.upcast_ref(), &depay_video, &parse_video, &decode_video, &sink_video])?;
+
+    let appsrc_audio = gst_app::AppSrc::builder()
+        .build();
+    let depay_audio = gst::ElementFactory::make("rtpopusdepay").build()?;
+    let parse_audio = gst::ElementFactory::make("opusparse").build()?;
+    let decode_audio = gst::ElementFactory::make("avdec_opus").build()?;
+    let sink_audio = gst::ElementFactory::make("autoaudiosink").build()?;
+    
+    pipeline.add_many(&[appsrc_audio.upcast_ref(), &depay_audio, &parse_audio, &decode_audio, &sink_audio])?;
+    gst::Element::link_many(&[appsrc_audio.upcast_ref(), &depay_audio, &parse_audio, &decode_audio, &sink_audio])?;
+
+    pipeline.set_state(State::Playing)?;
+
     // XCloud part
 
     let ts = match TokenStore::load(TOKENS_FILEPATH) {
@@ -349,6 +379,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     });
 
+    /*
     let (video_file, audio_file) = ("video.mkv", "audio.ogg");
 
     let h264_writer: Arc<Mutex<dyn webrtc::media::io::Writer + Send + Sync>> =
@@ -356,9 +387,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let ogg_writer: Arc<Mutex<dyn webrtc::media::io::Writer + Send + Sync>> = Arc::new(Mutex::new(
         OggWriter::new(File::create(audio_file)?, 48000, 2)?,
     ));
+     */
 
     let notify_tx = Arc::new(Notify::new());
     let notify_rx = notify_tx.clone();
+
+    let appsrc_audio_arc = Arc::new(appsrc_audio);
+    let appsrc_video_arc = Arc::new(appsrc_video);
 
     // Set a handler for when a new remote track starts, this handler saves buffers to disk as
     // an ivf file, since we could have multiple video tracks we provide a counter.
@@ -391,20 +426,32 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             });
 
             let notify_rx2 = Arc::clone(&notify_rx);
-            let h264_writer2 = Arc::clone(&h264_writer);
-            let ogg_writer2 = Arc::clone(&ogg_writer);
+            let appsrc_audio_clone = Arc::clone(&appsrc_audio_arc);
+            let appsrc_video_clone = Arc::clone(&appsrc_video_arc);
+            //let h264_writer2 = Arc::clone(&h264_writer);
+            //let ogg_writer2 = Arc::clone(&ogg_writer);
             Box::pin(async move {
                 let codec = track.codec().await;
                 let mime_type = codec.capability.mime_type.to_lowercase();
+
+                // Create glib::Buffer for gstreamer
+                let mut data = [0u8; 1500];
+                let (pkt_size, _) = track.read(&mut data).await.expect("Failed to read RTP packet");
+                let mut buffer = gst::Buffer::with_size(pkt_size).unwrap();
+                {
+                    let buffer = buffer.get_mut().unwrap();
+                    buffer.copy_from_slice(0, &data[..pkt_size]).expect("Failed to fill buffer from slice");
+                }
+
                 if mime_type == MIME_TYPE_OPUS.to_lowercase() {
-                    println!("Got Opus track, saving to disk as output.opus (48 kHz, 2 channels)");     
+                    println!("Got Opus track, sending to audio appsrc");     
                     tokio::spawn(async move {
-                        let _ = save_to_disk(ogg_writer2, track, notify_rx2).await;
+                        appsrc_audio_clone.push_buffer(buffer).expect("Failed to push buffer for audio");
                     });
                 } else if mime_type == MIME_TYPE_H264.to_lowercase() {
-                    println!("Got h264 track, saving to disk as output.h264");
+                    println!("Got h264 track, sending to video appsrc");
                      tokio::spawn(async move {
-                         let _ = save_to_disk(h264_writer2, track, notify_rx2).await;
+                        appsrc_video_clone.push_buffer(buffer).expect("Failed to push buffer for video");
                      });
                 }
             })
