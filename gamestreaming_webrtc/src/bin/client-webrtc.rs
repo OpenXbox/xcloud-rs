@@ -1,7 +1,7 @@
 use anyhow::Result;
 use gamestreaming_webrtc::api::{IceCandidate, SessionResponse};
 use std::collections::HashMap;
-use std::fs::File;
+use std::str::FromStr;
 use std::sync::Arc;
 use tokio::sync::{Mutex, Notify};
 use tokio::sync::mpsc;
@@ -31,7 +31,7 @@ use webrtc::rtp_transceiver::RTCRtpTransceiverInit;
 use webrtc::track::track_remote::TrackRemote;
 use gstreamer as gst;
 use gstreamer_app as gst_app;
-use gst::{prelude::*, State};
+use gst::{prelude::*, State, glib, ClockTime};
 
 use gamestreaming_webrtc::{ChannelProxy, ChannelType, GamestreamingClient, Platform, DataChannelMsg, ChannelExchangeMsg, GssvChannelEvent, GamepadData, GamepadProcessor};
 use xal::utils::TokenStore;
@@ -49,6 +49,7 @@ lazy_static! {
     static ref ADDRESS: Arc<Mutex<String>> = Arc::new(Mutex::new(String::new()));
     static ref GATHERED_CANDIDATES: Arc<Mutex<Vec<RTCIceCandidate>>> = Arc::new(Mutex::new(vec![]));
 }
+
 
 async fn save_to_disk(
     writer: Arc<Mutex<dyn webrtc::media::io::Writer + Send + Sync>>,
@@ -150,27 +151,48 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let pipeline = gst::Pipeline::default();
 
+    let caps_video = gst::Caps::from_str(
+            &format!("application/x-rtp, media=video, clock-rate=90000, encoding-name=H264, payload={}", 102)
+        )
+        .unwrap(); // packetization-mode=(string)1, profile-level-id=(string)42002a
     let appsrc_video = gst_app::AppSrc::builder()
+        .format(gst::Format::Time)
+        .is_live(true)
+        .caps(&caps_video)
         .build();
     let depay_video = gst::ElementFactory::make("rtph264depay").build()?;
-    let parse_video = gst::ElementFactory::make("h264parse").build()?;
+    // let parse_video = gst::ElementFactory::make("h264parse").build()?;
     let decode_video = gst::ElementFactory::make("avdec_h264").build()?;
+    let convert_video = gst::ElementFactory::make("videoconvert").build()?;
     let sink_video = gst::ElementFactory::make("autovideosink").build()?;
 
-    pipeline.add_many(&[appsrc_video.upcast_ref(), &depay_video, &parse_video, &decode_video, &sink_video])?;
-    gst::Element::link_many(&[appsrc_video.upcast_ref(), &depay_video, &parse_video, &decode_video, &sink_video])?;
+    pipeline.add_many(&[appsrc_video.upcast_ref(), &depay_video, /*&parse_video, */ &decode_video, &convert_video, &sink_video])?;
+    gst::Element::link_many(&[appsrc_video.upcast_ref(), &depay_video, /*&parse_video, */ &decode_video, &convert_video, &sink_video])?;
 
+    let caps_audio = gst::Caps::from_str(
+            &format!("application/x-rtp, media=audio, clock-rate=48000, encoding-name=OPUS, payload={}", 111)
+        )
+        .unwrap(); // packetization-mode=(string)1, profile-level-id=(string)42002a
     let appsrc_audio = gst_app::AppSrc::builder()
+        .format(gst::Format::Time)
+        .is_live(true)
+        .caps(&caps_audio)
         .build();
     let depay_audio = gst::ElementFactory::make("rtpopusdepay").build()?;
     let parse_audio = gst::ElementFactory::make("opusparse").build()?;
     let decode_audio = gst::ElementFactory::make("avdec_opus").build()?;
+    let convert_audio = gst::ElementFactory::make("audioconvert").build()?;
     let sink_audio = gst::ElementFactory::make("autoaudiosink").build()?;
     
-    pipeline.add_many(&[appsrc_audio.upcast_ref(), &depay_audio, &parse_audio, &decode_audio, &sink_audio])?;
-    gst::Element::link_many(&[appsrc_audio.upcast_ref(), &depay_audio, &parse_audio, &decode_audio, &sink_audio])?;
+    pipeline.add_many(&[appsrc_audio.upcast_ref(), &depay_audio, &parse_audio, &decode_audio, &convert_audio, &sink_audio])?;
+    gst::Element::link_many(&[appsrc_audio.upcast_ref(), &depay_audio, &parse_audio, &decode_audio, &convert_audio, &sink_audio])?;
 
     pipeline.set_state(State::Playing)?;
+
+    let bus = pipeline
+        .bus()
+        .expect("Pipeline without bus. Shouldn't happen!");
+
 
     // XCloud part
 
@@ -444,15 +466,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
 
                 if mime_type == MIME_TYPE_OPUS.to_lowercase() {
-                    println!("Got Opus track, sending to audio appsrc");     
+                    println!("Got Opus track, sending to audio appsrc");
                     tokio::spawn(async move {
                         appsrc_audio_clone.push_buffer(buffer).expect("Failed to push buffer for audio");
                     });
                 } else if mime_type == MIME_TYPE_H264.to_lowercase() {
                     println!("Got h264 track, sending to video appsrc");
-                     tokio::spawn(async move {
+                    tokio::spawn(async move {
                         appsrc_video_clone.push_buffer(buffer).expect("Failed to push buffer for video");
-                     });
+                    });
                 }
             })
         }else {
@@ -521,6 +543,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         };
         peer_connection.add_ice_candidate(c).await?;
     }
+
+    for msg in bus.iter_timed(gst::ClockTime::NONE) {
+        use gst::MessageView;
+
+        match msg.view() {
+            MessageView::Eos(..) => break,
+            MessageView::Error(err) => {
+                pipeline.set_state(gst::State::Null)?;
+                dbg!(&msg, err);
+                return Err("err".into());
+            }
+            _ => (),
+        }
+    }
+
+    pipeline.set_state(gst::State::Null)?;
+
 
     let mut gilrs = Gilrs::new()?;
 
