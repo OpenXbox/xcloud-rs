@@ -94,6 +94,7 @@ where
     }
 
     async fn send_message(&self, msg: DataChannelMsg) -> Result<(), Box<dyn std::error::Error>> {
+        println!("Send message: {:?}", &msg);
         self.sender()
             .send((Self::TYPE, ChannelExchangeMsg::DataChannel(msg)))
             .await

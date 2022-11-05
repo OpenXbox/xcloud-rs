@@ -91,9 +91,13 @@ impl InputChannel {
     /// Handle incoming gamepad data.
     /// Stores the data into queue until drained
     /// by a call to `create_input_packet`
-    fn on_button_press(&mut self, data: GamepadData) {
+    pub async fn on_button_press(&mut self, data: &GamepadData) -> Result<(), Box<dyn std::error::Error>> {
         println!("Received gamepad data");
-        self.input_frames.push(data);
+        self.input_frames.push(*data);
+
+        // TODO: Call this somewhere else
+        let pkt = self.create_input_packet().to_bytes().unwrap();
+        self.send_message(DataChannelMsg::Bytes(pkt)).await
     }
 
     /// Create input packet containing gamepad data and

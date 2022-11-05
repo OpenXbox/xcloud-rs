@@ -5,7 +5,7 @@ use std::fs::File;
 use std::sync::Arc;
 use tokio::sync::{Mutex, Notify};
 use tokio::sync::mpsc;
-use tokio::time::Duration;
+use tokio::time::{Duration, Instant};
 use webrtc::api::interceptor_registry::register_default_interceptors;
 use webrtc::api::media_engine::{MediaEngine, MIME_TYPE_H264, MIME_TYPE_OPUS};
 use webrtc::api::APIBuilder;
@@ -482,15 +482,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("{} is {:?}", gamepad.name(), gamepad.power_info());
     }
 
-    let mut active_gamepad = None;
-
     loop {
         let mut gamepad_processor = GamepadProcessor::new();
         // Examine new events
         while let Some(Event { id, event, time }) = gilrs.next_event() {
             println!("{:?} New event from {}: {:?}", time, id, event);
             gamepad_processor.add_event(event);
-            active_gamepad = Some(id);
+            let gamepad_data = gamepad_processor.get_data();
+            channel_proxy.lock().await.handle_input(&gamepad_data).await.unwrap();
         }
     }
 

@@ -1,4 +1,4 @@
-use crate::GssvChannelEvent;
+use crate::{GssvChannelEvent, GamepadData};
 
 use super::{
     base::{
@@ -110,7 +110,9 @@ impl ChannelProxy {
                 return Err(format!("Unhandled channel type {:?}", typ).into());
             },
         }
+    }
 
-
+    pub async fn handle_input(&mut self, data: &GamepadData) -> Result<(), Box<dyn std::error::Error>> {
+        self.input.on_button_press(data).await
     }
 }
