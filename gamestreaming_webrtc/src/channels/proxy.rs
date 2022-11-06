@@ -1,4 +1,4 @@
-use crate::{GssvChannelEvent, GamepadData};
+use crate::{GamepadData, packets::input::InputMetadataEntry};
 
 use super::{
     base::{
@@ -114,5 +114,9 @@ impl ChannelProxy {
 
     pub async fn handle_input(&mut self, data: &GamepadData) -> Result<(), Box<dyn std::error::Error>> {
         self.input.on_button_press(data).await
+    }
+
+    pub async fn handle_input_metadata(&mut self, data: &InputMetadataEntry) -> Result<(), Box<dyn std::error::Error>> {
+        self.input.on_metadata(data).await
     }
 }

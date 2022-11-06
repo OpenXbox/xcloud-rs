@@ -45,6 +45,7 @@ impl GssvChannel for InputChannel {
                 let (_, input_packet) = InputPacket::from_bytes((bytes, 0))?;
                 println!("[{:?}] Received packet: {:?}", Self::TYPE, input_packet);
                 if let Some(vibration) = input_packet.vibration_report {
+                    // Pass back the rumble description to the client
                     self.send_event(GssvChannelEvent::GamepadRumble(vibration));
                 }
                 Ok(())
@@ -101,6 +102,12 @@ impl InputChannel {
         // TODO: Call this somewhere else
         let pkt = self.create_input_packet().to_bytes().unwrap();
         self.send_message(DataChannelMsg::Bytes(pkt)).await
+    }
+
+    pub async fn on_metadata(&mut self, data: &InputMetadataEntry) -> Result<(), Box<dyn std::error::Error>> {
+        println!("Received gamepad data");
+        self.metadata_queue.push(*data);
+        Ok(())
     }
 
     /// Create input packet containing gamepad data and

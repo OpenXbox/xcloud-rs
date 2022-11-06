@@ -97,7 +97,7 @@ pub struct VibrationReport {
     pub repeat: u8,
 }
 
-#[derive(Debug, Eq, PartialEq, DekuRead, DekuWrite)]
+#[derive(Debug, Eq, PartialEq, DekuRead, DekuWrite, Copy, Clone)]
 pub struct InputMetadataEntry {
     pub server_data_key: u32,
     pub first_frame_packet_arrival_time_ms: u32,
