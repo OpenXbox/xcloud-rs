@@ -51,38 +51,16 @@ lazy_static! {
 }
 
 
-async fn save_to_disk(
-    writer: Arc<Mutex<dyn webrtc::media::io::Writer + Send + Sync>>,
-    track: Arc<TrackRemote>,
-    notify: Arc<Notify>,
-) -> Result<()> {
-    loop {
-        tokio::select! {
-            result = track.read_rtp() => {
-                if let Ok((rtp_packet, _)) = result {
-                    let mut w = writer.lock().await;
-                    w.write_rtp(&rtp_packet)?;
-                }else{
-                    println!("file closing begin after read_rtp error");
-                    let mut w = writer.lock().await;
-                    if let Err(err) = w.close() {
-                        println!("file close err: {}", err);
-                    }
-                    println!("file closing end after read_rtp error");
-                    return Ok(());
-                }
-            }
-            _ = notify.notified() => {
-                println!("file closing begin after notified");
-                let mut w = writer.lock().await;
-                if let Err(err) = w.close() {
-                    println!("file close err: {}", err);
-                }
-                println!("file closing end after notified");
-                return Ok(());
-            }
-        }
+async fn read_packet_into_gst_buf(track: &Arc<TrackRemote>) -> Result<gst::Buffer, Box<dyn std::error::Error>> {
+    let mut data = [0u8; 1500];
+    let (pkt_size, attrs) = track.read(&mut data).await?;
+    let mut buffer = gst::Buffer::with_size(pkt_size).unwrap();
+    {
+        let buffer = buffer.get_mut().unwrap();
+        buffer.copy_from_slice(0, &data[..pkt_size]).expect("Failed to fill buffer from slice");
     }
+
+    Ok(buffer)
 }
 
 async fn create_peer_connection() -> Result<RTCPeerConnection, webrtc::Error> {
@@ -154,10 +132,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let caps_video = gst::Caps::from_str(
             &format!("application/x-rtp, media=video, clock-rate=90000, encoding-name=H264, payload={}", 102)
         )
-        .unwrap(); // packetization-mode=(string)1, profile-level-id=(string)42002a
+        .unwrap();
     let appsrc_video = gst_app::AppSrc::builder()
         .format(gst::Format::Time)
         .is_live(true)
+        .do_timestamp(true)
         .caps(&caps_video)
         .build();
     let depay_video = gst::ElementFactory::make("rtph264depay").build()?;
@@ -172,10 +151,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let caps_audio = gst::Caps::from_str(
             &format!("application/x-rtp, media=audio, clock-rate=48000, encoding-name=OPUS, payload={}", 111)
         )
-        .unwrap(); // packetization-mode=(string)1, profile-level-id=(string)42002a
+        .unwrap();
     let appsrc_audio = gst_app::AppSrc::builder()
         .format(gst::Format::Time)
         .is_live(true)
+        .do_timestamp(true)
         .caps(&caps_audio)
         .build();
     let depay_audio = gst::ElementFactory::make("rtpopusdepay").build()?;
@@ -456,24 +436,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let codec = track.codec().await;
                 let mime_type = codec.capability.mime_type.to_lowercase();
 
-                // Create glib::Buffer for gstreamer
-                let mut data = [0u8; 1500];
-                let (pkt_size, _) = track.read(&mut data).await.expect("Failed to read RTP packet");
-                let mut buffer = gst::Buffer::with_size(pkt_size).unwrap();
-                {
-                    let buffer = buffer.get_mut().unwrap();
-                    buffer.copy_from_slice(0, &data[..pkt_size]).expect("Failed to fill buffer from slice");
-                }
-
                 if mime_type == MIME_TYPE_OPUS.to_lowercase() {
                     println!("Got Opus track, sending to audio appsrc");
                     tokio::spawn(async move {
-                        appsrc_audio_clone.push_buffer(buffer).expect("Failed to push buffer for audio");
+                        loop {
+                            let buffer = read_packet_into_gst_buf(&track).await.expect("Failed to read packet into buffer");
+                            appsrc_audio_clone.push_buffer(buffer).expect("Failed to push buffer for audio");
+                        }
                     });
                 } else if mime_type == MIME_TYPE_H264.to_lowercase() {
                     println!("Got h264 track, sending to video appsrc");
                     tokio::spawn(async move {
-                        appsrc_video_clone.push_buffer(buffer).expect("Failed to push buffer for video");
+                        loop {
+                            let buffer = read_packet_into_gst_buf(&track).await.expect("Failed to read packet into buffer");
+                            appsrc_video_clone.push_buffer(buffer).expect("Failed to push buffer for video");
+                        }
                     });
                 }
             })
