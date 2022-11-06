@@ -2,7 +2,7 @@ use std::str::FromStr;
 
 use chrono::{Duration, Utc};
 
-use crate::api::GssvApi;
+use crate::api::{GssvApi, KeepaliveResponse};
 use crate::api::{
     ConsolesResponse, IceCandidate, IceExchangeResponse, SdpExchangeResponse, SessionResponse,
     TitleResult,
@@ -213,6 +213,12 @@ impl GamestreamingClient {
             .await
             .map_err(GsError::ApiError)?;
         self.api.get_ice(session).await.map_err(GsError::ApiError)
+    }
+
+    pub async fn send_keepalive(&self, session: &SessionResponse) -> Result<KeepaliveResponse, GsError> {
+        self.api.send_keepalive(session)
+            .await
+            .map_err(GsError::ApiError)
     }
 }
 
