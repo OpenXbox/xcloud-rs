@@ -10,7 +10,10 @@ mod gamepad;
 pub use gamepad::GamepadProcessor;
 
 pub use channels::{
-    base::{ChannelType, DataChannelParams, DataChannelMsg, ChannelExchangeMsg, GssvChannel, GssvChannelEvent, GssvChannelProperties},
+    base::{
+        ChannelType, DataChannelParams, DataChannelMsg, ChannelExchangeMsg, GssvChannel,
+        GssvClientEvent,GssvChannelEvent, GssvChannelProperties
+    },
     proxy::ChannelProxy,
 };
 

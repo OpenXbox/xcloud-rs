@@ -8,10 +8,10 @@ use super::base::{
     ChannelExchangeMsg, ChannelType, DataChannelMsg, DataChannelParams, GssvChannel,
     GssvChannelProperties,
 };
-use crate::packets::input::{
+use crate::{packets::input::{
     ClientMetadataReport, GamepadData, GamepadReport, InputMetadataEntry, InputPacket,
     MetadataReport,
-};
+}, GssvChannelEvent};
 
 #[derive(Debug)]
 pub struct InputChannel {
@@ -44,7 +44,10 @@ impl GssvChannel for InputChannel {
             DataChannelMsg::Bytes(bytes) => {
                 let (_, input_packet) = InputPacket::from_bytes((bytes, 0))?;
                 println!("[{:?}] Received packet: {:?}", Self::TYPE, input_packet);
-                todo!("Handle input packet")
+                if let Some(vibration) = input_packet.vibration_report {
+                    self.send_event(GssvChannelEvent::GamepadRumble(vibration));
+                }
+                Ok(())
             }
             val => Err(format!("[{:?}] Unhandled message type: {:?}", Self::TYPE, val).into()),
         }

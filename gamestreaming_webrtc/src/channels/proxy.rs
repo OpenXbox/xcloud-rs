@@ -3,7 +3,7 @@ use crate::{GssvChannelEvent, GamepadData};
 use super::{
     base::{
         ChannelExchangeMsg, ChannelType, DataChannelMsg, DataChannelParams, GssvChannel,
-        GssvChannelProperties,
+        GssvChannelProperties, GssvClientEvent,
     },
     chat::ChatChannel,
     control::ControlChannel,
@@ -44,35 +44,35 @@ impl ChannelProxy {
     pub async fn handle_event(
         &mut self,
         typ: ChannelType,
-        event: GssvChannelEvent,
+        event: GssvClientEvent,
     ) -> Result<(), Box<dyn std::error::Error>> {
         match typ {
             ChannelType::Input => {
                 let channel = &self.input;
                 match event {
-                    GssvChannelEvent::ChannelOpen => channel.on_open().await,
-                    GssvChannelEvent::ChannelClose => channel.on_close().await,
+                    GssvClientEvent::ChannelOpen => channel.on_open().await,
+                    GssvClientEvent::ChannelClose => channel.on_close().await,
                 }
             },
             ChannelType::Control => {
                 let channel = &self.control;
                 match event {
-                    GssvChannelEvent::ChannelOpen => channel.on_open().await,
-                    GssvChannelEvent::ChannelClose => channel.on_close().await,
+                    GssvClientEvent::ChannelOpen => channel.on_open().await,
+                    GssvClientEvent::ChannelClose => channel.on_close().await,
                 }
             },
             ChannelType::Message => {
                 let channel = &self.message;
                 match event {
-                    GssvChannelEvent::ChannelOpen => channel.on_open().await,
-                    GssvChannelEvent::ChannelClose => channel.on_close().await,
+                    GssvClientEvent::ChannelOpen => channel.on_open().await,
+                    GssvClientEvent::ChannelClose => channel.on_close().await,
                 }
             },
             ChannelType::Chat => {
                 let channel = &self.chat;
                 match event {
-                    GssvChannelEvent::ChannelOpen => channel.on_open().await,
-                    GssvChannelEvent::ChannelClose => channel.on_close().await,
+                    GssvClientEvent::ChannelOpen => channel.on_open().await,
+                    GssvClientEvent::ChannelClose => channel.on_close().await,
                 }
             },
             _ => {

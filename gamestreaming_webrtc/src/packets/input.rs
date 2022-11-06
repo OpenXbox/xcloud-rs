@@ -151,18 +151,18 @@ pub struct SequenceInfo {
 
 #[derive(Debug, PartialEq, DekuRead, DekuWrite)]
 pub struct InputPacket {
-    report_type: InputReportType,
+    pub report_type: InputReportType,
     #[deku(cond = "!report_type.Vibration")]
     // Skip sequence info on vibration packets
-    seq_info: Option<SequenceInfo>,
+    pub seq_info: Option<SequenceInfo>,
     #[deku(cond = "report_type.Metadata")]
-    metadata_report: Option<MetadataReport>,
+    pub metadata_report: Option<MetadataReport>,
     #[deku(cond = "report_type.GamepadReport")]
-    gamepad_report: Option<GamepadReport>,
+    pub gamepad_report: Option<GamepadReport>,
     #[deku(cond = "report_type.ClientMetadata")]
-    client_metadata_report: Option<ClientMetadataReport>,
+    pub client_metadata_report: Option<ClientMetadataReport>,
     #[deku(cond = "report_type.Vibration")]
-    vibration_report: Option<VibrationReport>,
+    pub vibration_report: Option<VibrationReport>,
 }
 
 impl InputPacket {

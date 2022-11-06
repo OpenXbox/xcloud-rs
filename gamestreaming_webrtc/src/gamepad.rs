@@ -1,5 +1,8 @@
-use gilrs::{Button, EventType, Axis};
-use crate::GamepadData;
+use gilrs::{
+    Button, EventType, Axis,
+    ff::{Effect, EffectBuilder, BaseEffect, BaseEffectType, Replay, Ticks}
+};
+use crate::{GamepadData, packets::input::VibrationReport};
 
 pub struct GamepadProcessor {
     state: GamepadData,
@@ -101,5 +104,19 @@ impl GamepadProcessor {
 impl Default for GamepadProcessor {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+impl From<VibrationReport> for BaseEffect {
+    fn from(report: VibrationReport) -> Self {
+        BaseEffect {
+            kind: BaseEffectType::Weak { magnitude: 60_000 },
+            scheduling: Replay {
+                after: Ticks::from_ms(0),
+                play_for: Ticks::from_ms(report.duration_ms.into()),
+                with_delay: Ticks::from_ms(report.delay_ms.into()),
+            },
+            ..Default::default()
+        }
     }
 }

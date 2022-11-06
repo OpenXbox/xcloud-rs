@@ -1,5 +1,6 @@
 use anyhow::Result;
 use gamestreaming_webrtc::api::{IceCandidate, SessionResponse};
+use gilrs::ff::{BaseEffect, EffectBuilder};
 use std::collections::HashMap;
 use std::str::FromStr;
 use std::sync::Arc;
@@ -33,7 +34,10 @@ use gstreamer as gst;
 use gstreamer_app as gst_app;
 use gst::{prelude::*, State, glib, ClockTime};
 
-use gamestreaming_webrtc::{ChannelProxy, ChannelType, GamestreamingClient, Platform, DataChannelMsg, ChannelExchangeMsg, GssvChannelEvent, GamepadData, GamepadProcessor};
+use gamestreaming_webrtc::{
+    ChannelProxy, ChannelType, GamestreamingClient, Platform, DataChannelMsg,
+    ChannelExchangeMsg, GssvClientEvent, GssvChannelEvent, GamepadData, GamepadProcessor
+};
 use xal::utils::TokenStore;
 use gilrs::{Gilrs, Event};
 
@@ -126,6 +130,9 @@ async fn create_peer_connection() -> Result<RTCPeerConnection, webrtc::Error> {
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Gstreamer
     gst::init()?;
+
+    // Gamepad lib
+    let mut gilrs = Gilrs::new()?;
 
     let pipeline = gst::Pipeline::default();
 
@@ -266,7 +273,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let channel = channel_clone.clone();
                 Box::pin(async move {
                     println!("Data channel '{}'-'{}' open", channel.label(), channel.id());
-                    let _ = channel_proxy.lock().await.handle_event(*chan_type, GssvChannelEvent::ChannelOpen).await;
+                    let _ = channel_proxy.lock().await.handle_event(*chan_type, GssvClientEvent::ChannelOpen).await;
                 })
             }))
             .await;
@@ -279,7 +286,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let channel = Arc::clone(&channel_clone);
                 Box::pin(async move {
                     println!("Data channel '{}'-'{}' close", channel.label(), channel.id());
-                    let _ = channel_proxy.lock().await.handle_event(*chan_type, GssvChannelEvent::ChannelClose).await;
+                    let _ = channel_proxy.lock().await.handle_event(*chan_type, GssvClientEvent::ChannelClose).await;
                 })
             }))
             .await;
@@ -345,6 +352,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }))
         .await;
 
+    let (rumble_tx, mut rumble_rx) = mpsc::channel(10);
+
     // Start task that listens to mpsc receiver from ChannelProxy for messages to send out
     let chan_defs_inner = channel_defs.clone();
     let channel_recv_loop = tokio::spawn(async move {
@@ -360,9 +369,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                         DataChannelMsg::String(msg_str) => chan.send_text(msg_str).await,
                                     }
                                 },
-                                ChannelExchangeMsg::Event(evt) => {
-                                    todo!("Events currently unhandled - Will they be even needed? event={:?}", evt);
+                                ChannelExchangeMsg::ChannelEvent(evt) => {
+                                    match evt {
+                                        GssvChannelEvent::GamepadRumble(vibration) => {
+                                            let rumble_effect: BaseEffect = vibration.into();
+                                            rumble_tx.send(rumble_effect).await;
+                                            Ok(0)
+                                        },
+                                        _ => {
+                                            todo!("Event currently unhandled, event={:?}", evt);
+                                        }
+                                    }
                                 },
+                                ChannelExchangeMsg::ClientEvent(evt) => {
+                                    panic!("Received Client event on client side, evt={:?}", evt)
+                                }
                             }
                         },
                         None => {
@@ -522,7 +543,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
 
-    let mut gilrs = Gilrs::new()?;
+    
 
     // Iterate over all connected gamepads
     for (_id, gamepad) in gilrs.gamepads() {
@@ -537,6 +558,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             gamepad_processor.add_event(event);
             let gamepad_data = gamepad_processor.get_data();
             channel_proxy.lock().await.handle_input(&gamepad_data).await.unwrap();
+
+            if let Ok(rumble_effect) = rumble_rx.try_recv() {
+                if gilrs.gamepad(id).is_ff_supported() {
+                    EffectBuilder::new()
+                    .add_effect(rumble_effect)
+                    .gamepads(&[id])
+                    .finish(&mut gilrs)?
+                    .play()?;
+                }
+            }
         }
     }
 

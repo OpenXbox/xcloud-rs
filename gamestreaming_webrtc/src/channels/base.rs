@@ -1,6 +1,8 @@
 use async_trait::async_trait;
 use tokio::sync::mpsc;
 
+use crate::packets::input::VibrationReport;
+
 #[derive(Debug, Eq, PartialEq, Hash, Clone, Copy)]
 pub enum ChannelType {
     Chat,
@@ -27,7 +29,15 @@ impl ToString for ChannelType {
 
 #[derive(Debug)]
 pub enum GssvChannelEvent {
+    /// Controller Rumble (Channels to Client)
+    GamepadRumble(VibrationReport),
+}
+
+#[derive(Debug)]
+pub enum GssvClientEvent {
+    /// Data Channel opened (Client to Channels)
     ChannelOpen,
+    /// Data Channel closed (Client to Channels)
     ChannelClose,
 }
 
@@ -39,7 +49,8 @@ pub enum DataChannelMsg {
 
 #[derive(Debug)]
 pub enum ChannelExchangeMsg {
-    Event(GssvChannelEvent),
+    ChannelEvent(GssvChannelEvent),
+    ClientEvent(GssvClientEvent),
     DataChannel(DataChannelMsg),
 }
 
@@ -103,7 +114,7 @@ where
 
     async fn send_event(&self, event: GssvChannelEvent) -> Result<(), Box<dyn std::error::Error>> {
         self.sender()
-            .send((Self::TYPE, ChannelExchangeMsg::Event(event)))
+            .send((Self::TYPE, ChannelExchangeMsg::ChannelEvent(event)))
             .await
             .map_err(|e| e.into())
     }
