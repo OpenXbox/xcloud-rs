@@ -2,7 +2,6 @@ use deku::prelude::*;
 
 #[allow(non_snake_case)]
 #[derive(Copy, Clone, Default, DekuRead, DekuWrite, Debug, Eq, PartialEq)]
-#[deku(endian = "little")]
 pub struct InputReportType {
     /// Bitmask: 0x80
     #[deku(bits = "1")]
@@ -32,56 +31,55 @@ pub struct InputReportType {
 
 #[allow(non_snake_case)]
 #[derive(Debug, Default, Copy, Clone, DekuRead, DekuWrite, Eq, PartialEq)]
-#[deku(endian = "little")]
 pub struct GamepadButton {
     /// Bitmask: 0x8000
     #[deku(bits = "1")]
-    pub Unused: bool,
+    pub Y: bool,
     /// Bitmask: 0x4000
     #[deku(bits = "1")]
-    pub RightThumb: bool,
+    pub X: bool,
     /// Bitmask: 0x2000
     #[deku(bits = "1")]
-    pub LeftThumb: bool,
+    pub B: bool,
     /// Bitmask: 0x1000
     #[deku(bits = "1")]
-    pub RightShoulder: bool,
-    /// Bitmask: 0x800
-    #[deku(bits = "1")]
-    pub LeftShoulder: bool,
-    /// Bitmask: 0x400
-    #[deku(bits = "1")]
-    pub DPadRight: bool,
-    /// Bitmask: 0x200
-    #[deku(bits = "1")]
-    pub DPadLeft: bool,
-    /// Bitmask: 0x100
-    #[deku(bits = "1")]
-    pub DPadDown: bool,
-    /// Bitmask: 0x80
-    #[deku(bits = "1")]
-    pub DPadUp: bool,
-    /// Bitmask: 0x40
-    #[deku(bits = "1")]
-    pub Y: bool,
-    /// Bitmask: 0x20
-    #[deku(bits = "1")]
-    pub X: bool,
-    /// Bitmask: 0x10
-    #[deku(bits = "1")]
-    pub B: bool,
-    /// Bitmask: 0x08
-    #[deku(bits = "1")]
     pub A: bool,
-    /// Bitmask: 0x04
+    /// Bitmask: 0x0800
     #[deku(bits = "1")]
     pub View: bool,
-    /// Bitmask: 0x02
+    /// Bitmask: 0x0400
     #[deku(bits = "1")]
     pub Menu: bool,
-    /// Bitmask: 0x01
+    /// Bitmask: 0x0200
     #[deku(bits = "1")]
     pub Nexus: bool,
+    /// Bitmask: 0x0100
+    #[deku(bits = "1")]
+    pub Unused: bool,
+    /// Bitmask: 0x80
+    #[deku(bits = "1")]
+    pub RightThumb: bool,
+    /// Bitmask: 0x40
+    #[deku(bits = "1")]
+    pub LeftThumb: bool,
+    /// Bitmask: 0x20
+    #[deku(bits = "1")]
+    pub RightShoulder: bool,
+    /// Bitmask: 0x10
+    #[deku(bits = "1")]
+    pub LeftShoulder: bool,
+    /// Bitmask: 0x08
+    #[deku(bits = "1")]
+    pub DPadRight: bool,
+    /// Bitmask: 0x04
+    #[deku(bits = "1")]
+    pub DPadLeft: bool,
+    /// Bitmask: 0x02
+    #[deku(bits = "1")]
+    pub DPadDown: bool,
+    /// Bitmask: 0x01
+    #[deku(bits = "1")]
+    pub DPadUp: bool,
 }
 
 #[derive(Debug, Eq, PartialEq, DekuRead, DekuWrite)]
@@ -285,7 +283,7 @@ mod tests {
     #[test]
     fn parse_gamepad_button() {
         // A, DPadRight, LeftThumb
-        let data = [0x24, 0x08u8];
+        let data = [0x10, 0x48u8];
 
         let bitslice = BitSlice::from_slice(&data).expect("Failed to create bitslice");
         let (rest, parsed) =
@@ -303,5 +301,30 @@ mod tests {
         assert!(!parsed.X);
         assert!(!parsed.Y);
         assert!(!parsed.DPadLeft);
+    }
+
+    #[test]
+    fn serialize_gamepad_button() {
+        pub fn to_u16(data: GamepadButton) -> u16 {
+            let bytes = data.to_bytes().unwrap();
+            let bla: [u8; 2] = bytes.try_into().expect("slice with incorrect length");
+            u16::from_le_bytes(bla)
+        }
+
+        assert_eq!(to_u16(GamepadButton {Nexus: true, ..Default::default()}), 0x02);
+        assert_eq!(to_u16(GamepadButton {Menu: true, ..Default::default()}), 0x04);
+        assert_eq!(to_u16(GamepadButton {View: true, ..Default::default()}), 0x08);
+        assert_eq!(to_u16(GamepadButton {A: true, ..Default::default()}), 0x10);
+        assert_eq!(to_u16(GamepadButton {B: true, ..Default::default()}), 0x20);
+        assert_eq!(to_u16(GamepadButton {X: true, ..Default::default()}), 0x40);
+        assert_eq!(to_u16(GamepadButton {Y: true, ..Default::default()}), 0x80);
+        assert_eq!(to_u16(GamepadButton {DPadUp: true, ..Default::default()}), 0x100);
+        assert_eq!(to_u16(GamepadButton {DPadDown: true, ..Default::default()}), 0x200);
+        assert_eq!(to_u16(GamepadButton {DPadLeft: true, ..Default::default()}), 0x400);
+        assert_eq!(to_u16(GamepadButton {DPadRight: true, ..Default::default()}), 0x800);
+        assert_eq!(to_u16(GamepadButton {LeftShoulder: true, ..Default::default()}), 0x1000);
+        assert_eq!(to_u16(GamepadButton {RightShoulder: true, ..Default::default()}), 0x2000);
+        assert_eq!(to_u16(GamepadButton {LeftThumb: true, ..Default::default()}), 0x4000);
+        assert_eq!(to_u16(GamepadButton {RightThumb: true, ..Default::default()}), 0x8000);
     }
 }

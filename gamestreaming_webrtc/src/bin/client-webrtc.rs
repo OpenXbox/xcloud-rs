@@ -521,22 +521,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         peer_connection.add_ice_candidate(c).await?;
     }
 
-    for msg in bus.iter_timed(gst::ClockTime::NONE) {
-        use gst::MessageView;
-
-        match msg.view() {
-            MessageView::Eos(..) => break,
-            MessageView::Error(err) => {
-                pipeline.set_state(gst::State::Null)?;
-                dbg!(&msg, err);
-                return Err("err".into());
-            }
-            _ => (),
-        }
-    }
-
-    pipeline.set_state(gst::State::Null)?;
-
 
     let mut gilrs = Gilrs::new()?;
 
@@ -555,6 +539,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             channel_proxy.lock().await.handle_input(&gamepad_data).await.unwrap();
         }
     }
+
+    for msg in bus.iter_timed(gst::ClockTime::NONE) {
+        use gst::MessageView;
+
+        match msg.view() {
+            MessageView::Eos(..) => break,
+            MessageView::Error(err) => {
+                pipeline.set_state(gst::State::Null)?;
+                dbg!(&msg, err);
+                return Err("err".into());
+            }
+            _ => (),
+        }
+    }
+
+    pipeline.set_state(gst::State::Null)?;
+
+
 
     println!("Press ctrl-c to stop");
     tokio::select! {
