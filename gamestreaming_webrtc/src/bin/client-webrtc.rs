@@ -542,7 +542,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         peer_connection.add_ice_candidate(c).await?;
     }
 
+    let keepalive_loop = tokio::spawn(async move {
+        loop {
+            tokio::time::sleep(Duration::from_secs(5)).await;
 
+            match xcloud.send_keepalive(&session).await {
+                Ok(_resp) => {
+                    // println!("Keepalive response: {:?}", resp);
+                },
+                Err(err) => {
+                    eprintln!("Sending keepalive faild!, err={:?}", err);
+                }
+            }
+        }
+    });
     
 
     // Iterate over all connected gamepads
