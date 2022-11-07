@@ -1,12 +1,12 @@
 use anyhow::Result;
-use gamestreaming_webrtc::api::{IceCandidate, SessionResponse};
+use gamestreaming_webrtc::api::{IceCandidateSessionResponse, IceCandidate};
 use gilrs::ff::{BaseEffect, EffectBuilder};
 use std::collections::HashMap;
 use std::str::FromStr;
 use std::sync::Arc;
 use tokio::sync::{Mutex, Notify};
 use tokio::sync::mpsc;
-use tokio::time::{Duration, Instant};
+use tokio::time::Duration;
 use webrtc::api::interceptor_registry::register_default_interceptors;
 use webrtc::api::media_engine::{MediaEngine, MIME_TYPE_H264, MIME_TYPE_OPUS};
 use webrtc::api::APIBuilder;
@@ -16,8 +16,6 @@ use webrtc::data_channel::RTCDataChannel;
 use webrtc::ice_transport::ice_candidate::{RTCIceCandidate, RTCIceCandidateInit};
 use webrtc::ice_transport::ice_server::RTCIceServer;
 use webrtc::interceptor::registry::Registry;
-use webrtc::media::io::h264_writer::H264Writer;
-use webrtc::media::io::ogg_writer::OggWriter;
 use webrtc::peer_connection::configuration::RTCConfiguration;
 use webrtc::peer_connection::peer_connection_state::RTCPeerConnectionState;
 use webrtc::peer_connection::sdp::session_description::RTCSessionDescription;
@@ -32,11 +30,11 @@ use webrtc::rtp_transceiver::RTCRtpTransceiverInit;
 use webrtc::track::track_remote::TrackRemote;
 use gstreamer as gst;
 use gstreamer_app as gst_app;
-use gst::{prelude::*, State, glib, ClockTime};
+use gst::{prelude::*, State};
 
 use gamestreaming_webrtc::{
     ChannelProxy, ChannelType, GamestreamingClient, Platform, DataChannelMsg,
-    ChannelExchangeMsg, GssvClientEvent, GssvChannelEvent, GamepadData, GamepadProcessor
+    ChannelExchangeMsg, GssvClientEvent, GssvChannelEvent, GamepadProcessor
 };
 use xal::utils::TokenStore;
 use gilrs::{Gilrs, Event};
@@ -198,7 +196,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     )
     .await?;
 
-    let session = match xcloud.lookup_games().await?.first() {
+    let session = match xcloud.lookup_games().await?.get(5) {
         Some(title) => {
             println!("Starting title: {:?}", title);
             let session = xcloud.start_stream_xcloud(&title.title_id).await?;
@@ -223,7 +221,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let candidates = Arc::clone(&GATHERED_CANDIDATES);
     peer_connection
         .on_ice_candidate(Box::new(move |c: Option<RTCIceCandidate>| {
-            println!("on_ice_candidate {:?}", c);
+            //println!("on_ice_candidate {:?}", c);
             let candidates2 = Arc::clone(&candidates);
             let pc2 = pc.clone();
             let pending_candidates3 = Arc::clone(&pending_candidates2);
@@ -233,12 +231,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         let desc = pc.remote_description().await;
                         if desc.is_none() {
                             // Candidate pending
-                            println!("Candidate pending: {}", c);
+                            //println!("Candidate pending: {}", c);
                             let mut cs_pending = pending_candidates3.lock().await;
                             cs_pending.push(c);
                         } else {
                             // Candidate ready
-                            println!("Candidate ready: {}", c);
+                            //println!("Candidate ready: {}", c);
                             let mut cs_ready = candidates2.lock().await;
                             cs_ready.push(c);
                         }
@@ -250,7 +248,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let (channel_tx, mut channel_rx) = mpsc::channel(10);
     let channel_proxy = Arc::new(Mutex::new(ChannelProxy::new(channel_tx)));
-    let mut channel_defs: Arc<Mutex<HashMap<ChannelType, Arc<RTCDataChannel>>>> = Arc::new(Mutex::new(HashMap::new()));
+    let channel_defs: Arc<Mutex<HashMap<ChannelType, Arc<RTCDataChannel>>>> = Arc::new(Mutex::new(HashMap::new()));
     // Create channels and store in HashMap
     for (chan_type, params) in ChannelProxy::data_channel_create_params() {
         let channel = peer_connection
@@ -357,24 +355,33 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Start task that listens to mpsc receiver from ChannelProxy for messages to send out
     let chan_defs_inner = channel_defs.clone();
     let channel_recv_loop = tokio::spawn(async move {
+        // FIXME: Wait until datachannels are opened
+        tokio::time::sleep(Duration::from_secs(3)).await;
         loop {
-            let recv_res = match channel_rx.recv().await {
+            match channel_rx.recv().await {
                 Some((chan_type, msg)) => {
                     match chan_defs_inner.lock().await.get(&chan_type) {
                         Some(chan) => {
                             match msg {
                                 ChannelExchangeMsg::DataChannel(bla) => {
                                     match bla {
-                                        DataChannelMsg::Bytes(msg_bytes) => chan.send(&msg_bytes.into()).await,
-                                        DataChannelMsg::String(msg_str) => chan.send_text(msg_str).await,
+                                        DataChannelMsg::Bytes(msg_bytes) => {
+                                            chan.send(&msg_bytes.into())
+                                                .await
+                                                .expect(&format!("Failed to send Bytes msg to datachannel {chan_type:?}"));
+                                        },
+                                        DataChannelMsg::String(msg_str) => {
+                                            chan.send_text(msg_str)
+                                                .await
+                                                .expect(&format!("Failed to send String msg to datachannel {chan_type:?}"));
+                                        },
                                     }
                                 },
                                 ChannelExchangeMsg::ChannelEvent(evt) => {
                                     match evt {
                                         GssvChannelEvent::GamepadRumble(vibration) => {
                                             let rumble_effect: BaseEffect = vibration.into();
-                                            rumble_tx.send(rumble_effect).await;
-                                            Ok(0)
+                                            rumble_tx.send(rumble_effect).await.expect("Failed to send rumble effect");
                                         },
                                         _ => {
                                             todo!("Event currently unhandled, event={:?}", evt);
@@ -387,17 +394,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             }
                         },
                         None => {
-                            Err(webrtc::Error::new("Channel not found".to_owned()))
+                            eprintln!("Channel not found: {chan_type:?}");
                         },
                     }
                 },
-                None => {
-                    Ok(0)
-                }
-            };
-
-            if let Err(err) = recv_res {
-                eprintln!("Failed to receive message from ChannelProxy, error: {:?}", err)
+                None => {}
             }
         }
     });
@@ -563,22 +564,27 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("{} is {:?}", gamepad.name(), gamepad.power_info());
     }
 
+    // FIXME: Wait until datachannels are open
+    tokio::time::sleep(Duration::from_secs(3)).await;
     loop {
         let mut gamepad_processor = GamepadProcessor::new();
         // Examine new events
         while let Some(Event { id, event, time }) = gilrs.next_event() {
-            println!("{:?} New event from {}: {:?}", time, id, event);
+            //println!("{:?} New event from {}: {:?}", time, id, event);
             gamepad_processor.add_event(event);
             let gamepad_data = gamepad_processor.get_data();
             channel_proxy.lock().await.handle_input(&gamepad_data).await.unwrap();
 
             if let Ok(rumble_effect) = rumble_rx.try_recv() {
                 if gilrs.gamepad(id).is_ff_supported() {
+                    println!("FF supported!!");
                     EffectBuilder::new()
-                    .add_effect(rumble_effect)
-                    .gamepads(&[id])
-                    .finish(&mut gilrs)?
-                    .play()?;
+                        .add_effect(rumble_effect)
+                        .gamepads(&[id])
+                        .finish(&mut gilrs)?
+                        .play()?;
+                } else {
+                    eprintln!("FF not supported!!!!!!");
                 }
             }
         }

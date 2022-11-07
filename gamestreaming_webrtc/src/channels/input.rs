@@ -46,7 +46,9 @@ impl GssvChannel for InputChannel {
                 println!("[{:?}] Received packet: {:?}", Self::TYPE, input_packet);
                 if let Some(vibration) = input_packet.vibration_report {
                     // Pass back the rumble description to the client
-                    self.send_event(GssvChannelEvent::GamepadRumble(vibration));
+                    self.send_event(GssvChannelEvent::GamepadRumble(vibration))
+                        .await
+                        .expect("Failed to send GamepadRumble to client");
                 }
                 Ok(())
             }
@@ -96,7 +98,6 @@ impl InputChannel {
     /// Stores the data into queue until drained
     /// by a call to `create_input_packet`
     pub async fn on_button_press(&mut self, data: &GamepadData) -> Result<(), Box<dyn std::error::Error>> {
-        println!("Received gamepad data");
         self.input_frames.push(*data);
 
         // TODO: Call this somewhere else
@@ -105,7 +106,6 @@ impl InputChannel {
     }
 
     pub async fn on_metadata(&mut self, data: &InputMetadataEntry) -> Result<(), Box<dyn std::error::Error>> {
-        println!("Received gamepad data");
         self.metadata_queue.push(*data);
         Ok(())
     }

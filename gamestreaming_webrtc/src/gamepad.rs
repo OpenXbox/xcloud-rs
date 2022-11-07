@@ -110,9 +110,9 @@ impl Default for GamepadProcessor {
 impl From<VibrationReport> for BaseEffect {
     fn from(report: VibrationReport) -> Self {
         BaseEffect {
-            kind: BaseEffectType::Weak { magnitude: 60_000 },
+            kind: BaseEffectType::Strong { magnitude: 60_000 },
             scheduling: Replay {
-                after: Ticks::from_ms(0),
+                after: Ticks::from_ms(50),
                 play_for: Ticks::from_ms(report.duration_ms.into()),
                 with_delay: Ticks::from_ms(report.delay_ms.into()),
             },
