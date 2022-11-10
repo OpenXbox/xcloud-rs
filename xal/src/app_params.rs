@@ -59,11 +59,29 @@ impl XalAppParameters {
         }
     }
 
+    pub fn gamepass() -> Self {
+        Self {
+            app_id: "000000004c20a908".into(),
+            title_id: "1016898439".into(),
+            redirect_uri: "ms-xal-000000004c20a908://auth".into(),
+        }
+    }
+
     pub fn gamepass_beta() -> Self {
         Self {
             app_id: "000000004c20a908".into(),
             title_id: "1016898439".into(),
             redirect_uri: "ms-xal-public-beta-000000004c20a908://auth".into(),
+        }
+    }
+
+    /// Family settings is somewhat special
+    /// Uses default oauth20_desktop.srf redirect uri
+    pub fn family_settings() -> Self {
+        Self {
+            app_id: "00000000482C8F49".into(),
+            title_id: "1618633878".into(),
+            redirect_uri: "https://login.live.com/oauth20_desktop.srf".into(),
         }
     }
 }
@@ -107,7 +125,6 @@ impl Default for XalClientParameters {
         Self::android()
     }
 }
-
 
 #[cfg(test)]
 mod tests {
