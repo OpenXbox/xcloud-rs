@@ -1,3 +1,5 @@
+use crate::app_params::XalAppParameters;
+
 use super::{
     app_params::{DeviceType, XalClientParameters},
     models::request,
@@ -89,6 +91,7 @@ where
 #[derive(Debug)]
 pub struct XalAuthenticator {
     device_id: uuid::Uuid,
+    app_params: XalAppParameters,
     client_params: XalClientParameters,
     ms_cv: cvlib::CorrelationVector,
     client: reqwest::Client,
@@ -98,7 +101,8 @@ pub struct XalAuthenticator {
 
 impl Default for XalAuthenticator {
     fn default() -> Self {
-        let app_params = XalClientParameters::default();
+        let client_params = XalClientParameters::default();
+        let app_params = XalAppParameters::default();
         let client_id = ClientId::new(app_params.app_id.clone());
         let client_secret = None;
 
@@ -115,7 +119,8 @@ impl Default for XalAuthenticator {
 
         Self {
             device_id: uuid::Uuid::new_v4(),
-            client_params: app_params,
+            app_params,
+            client_params,
             ms_cv: cvlib::CorrelationVector::new(),
             client: reqwest::Client::new(),
             client2,
@@ -172,7 +177,7 @@ impl XalAuthenticator {
         refresh_token: &RefreshToken,
     ) -> Result<response::XCloudTokenResponse> {
         let form_body = request::WindowsLiveTokenRequest {
-            client_id: &self.client_params.app_id.clone(),
+            client_id: &self.app_params.app_id.clone(),
             grant_type: "refresh_token",
             scope:
                 "service::http://Passport.NET/purpose::PURPOSE_XBOX_CLOUD_CONSOLE_TRANSFER_TOKEN",
@@ -284,9 +289,9 @@ impl XalAuthenticator {
         headers.insert("MS-CV", self.next_cv().parse()?);
 
         let json_body = request::SisuAuthenticationRequest {
-            app_id: &self.client_params.app_id,
-            title_id: &self.client_params.title_id,
-            redirect_uri: &self.client_params.redirect_uri,
+            app_id: &self.app_params.app_id,
+            title_id: &self.app_params.title_id,
+            redirect_uri: &self.app_params.redirect_uri,
             device_token,
             sandbox: "RETAIL",
             token_type: "code",
@@ -328,7 +333,7 @@ impl XalAuthenticator {
     ) -> Result<response::SisuAuthorizationResponse> {
         let json_body = request::SisuAuthorizationRequest {
             access_token: &format!("t={}", access_token),
-            app_id: &self.client_params.app_id.clone(),
+            app_id: &self.app_params.app_id.clone(),
             device_token,
             sandbox: "RETAIL",
             site_name: "user.auth.xboxlive.com",
