@@ -36,61 +36,67 @@ impl ToString for DeviceType {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct XalClientParameters {
-    pub user_agent: String,
+pub struct XalAppParameters {
     pub app_id: String,
-    pub device_type: DeviceType,
-    pub client_version: String,
     pub title_id: String,
     pub redirect_uri: String,
+}
+
+impl XalAppParameters {
+    pub fn xbox_app_beta() -> Self {
+        Self {
+            app_id: "000000004415494b".into(),
+            title_id: "177887386".into(),
+            redirect_uri: "ms-xal-000000004415494b://auth".into(),
+        }
+    }
+
+    pub fn xbox_app() -> Self {
+        Self {
+            app_id: "000000004c12ae6f".into(),
+            title_id: "328178078".into(),
+            redirect_uri: "ms-xal-000000004c12ae6f://auth".into(),
+        }
+    }
+
+    pub fn gamepass_beta() -> Self {
+        Self {
+            app_id: "000000004c20a908".into(),
+            title_id: "1016898439".into(),
+            redirect_uri: "ms-xal-public-beta-000000004c20a908://auth".into(),
+        }
+    }
+}
+
+impl Default for XalAppParameters {
+    fn default() -> Self {
+        Self::gamepass_beta()
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct XalClientParameters {
+    pub user_agent: String,
+    pub device_type: DeviceType,
+    pub client_version: String,
     pub query_display: String,
 }
 
 impl XalClientParameters {
-    pub fn ios_xboxbeta_params() -> Self {
-        Self {
-            user_agent: "XAL iOS 2020.07.20200714.000".into(),
-            app_id: "000000004415494b".into(),
-            device_type: DeviceType::IOS,
-            client_version: "14.0.1".into(),
-            title_id: "177887386".into(),
-            redirect_uri: "ms-xal-000000004415494b://auth".into(),
-            query_display: "ios_phone".into(),
-        }
-    }
-
-    pub fn ios_xbox_params() -> Self {
+    pub fn ios() -> Self {
         Self {
             user_agent: "XAL iOS 2021.11.20211021.000".into(),
-            app_id: "000000004c12ae6f".into(),
             device_type: DeviceType::IOS,
             client_version: "15.6.1".into(),
-            title_id: "328178078".into(),
-            redirect_uri: "ms-xal-000000004c12ae6f://auth".into(),
             query_display: "ios_phone".into(),
         }
     }
 
-    pub fn android_xboxbeta_params() -> Self {
+    pub fn android() -> Self {
         Self {
             user_agent: "XAL Android 2020.07.20200714.000".into(),
-            app_id: "000000004415494b".into(),
             device_type: DeviceType::ANDROID,
             client_version: "8.0.0".into(),
-            title_id: "177887386".into(),
-            redirect_uri: "ms-xal-000000004415494b://auth".into(),
-            query_display: "android_phone".into(),
-        }
-    }
-
-    pub fn android_gamepass_beta_params() -> Self {
-        Self {
-            user_agent: "XAL Android 2020.07.20200714.000".into(),
-            app_id: "000000004c20a908".into(),
-            device_type: DeviceType::ANDROID,
-            client_version: "8.0.0".into(),
-            title_id: "1016898439".into(),
-            redirect_uri: "ms-xal-public-beta-000000004c20a908://auth".into(),
             query_display: "android_phone".into(),
         }
     }
@@ -98,9 +104,10 @@ impl XalClientParameters {
 
 impl Default for XalClientParameters {
     fn default() -> Self {
-        Self::android_gamepass_beta_params()
+        Self::android()
     }
 }
+
 
 #[cfg(test)]
 mod tests {
