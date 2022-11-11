@@ -142,6 +142,10 @@ impl XalAuthenticator {
 }
 
 impl XalAuthenticator {
+    pub fn app_params(&self) -> XalAppParameters {
+        self.app_params.clone()
+    }
+
     pub fn client_params(&self) -> XalClientParameters {
         self.client_params.clone()
     }

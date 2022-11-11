@@ -4,12 +4,13 @@ use std::fs;
 
 use crate::authenticator::SpecialTokenResponse;
 use crate::{
-    app_params::XalClientParameters,
+    app_params::{XalAppParameters, XalClientParameters},
     models::response::{SisuAuthorizationResponse, XCloudTokenResponse, XSTSResponse},
 };
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct TokenStore {
+    pub app_params: XalAppParameters,
     pub client_params: XalClientParameters,
     pub wl_token: SpecialTokenResponse,
     pub sisu_tokens: SisuAuthorizationResponse,
