@@ -173,9 +173,20 @@ impl GamestreamingClient {
         self.api.set_sdp(session, sdp)
             .await
             .map_err(GsError::ApiError)?;
-        let sdp_response = self.api.get_sdp(session)
-            .await
+
+        let mut sdp_result = self.api.get_sdp(session).await;
+
+        while sdp_result.is_err() {
+            sdp_result = self.api.get_sdp(session)
+                .await;
+
+            println!("Waiting for SDP result...");
+            tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+        }
+
+        let sdp_response = sdp_result
             .map_err(GsError::ApiError)?;
+
         let error_str = match &sdp_response.exchange_response.status {
             Some(status) => match status.as_ref() {
                 "success" => {
