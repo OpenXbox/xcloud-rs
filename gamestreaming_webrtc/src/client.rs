@@ -2,7 +2,7 @@ use std::str::FromStr;
 
 use chrono::{Duration, Utc};
 
-use crate::api::GssvApi;
+use crate::api::{GssvApi, SessionState};
 use crate::api::{
     ConsolesResponse, IceCandidate, IceExchangeResponse, SdpExchangeResponse, SessionResponse,
     TitleResult,
@@ -112,11 +112,11 @@ impl GamestreamingClient {
             < Duration::seconds(GamestreamingClient::CONNECTION_TIMEOUT_SECS)
         {
             let state_response = self.api.get_session_state(&session).await?;
-            match state_response.state.as_ref() {
-                "WaitingForResources" | "Provisioning" => {
+            match state_response.state {
+                SessionState::WaitingForResources | SessionState::Provisioning => {
                     println!("Waiting for session to get ready");
                 }
-                "ReadyToConnect" => {
+                SessionState::ReadyToConnect => {
                     println!("Stream is ready to connect");
                     if let Err(connect_err) =
                         self.api.session_connect(&session, &self.transfer_token).await
@@ -125,21 +125,15 @@ impl GamestreamingClient {
                         return Err(connect_err.into());
                     }
                 }
-                "Provisioned" => {
+                SessionState::Provisioned => {
                     println!("Game session is ready!");
                     return Ok(session);
                 }
-                "Failed" => {
+                SessionState::Failed => {
                     println!("Failed to provision session");
                     return Err(GsError::Provisioning(format!(
                         "Received failed state - error: {:?}",
                         state_response.error_details
-                    )));
-                }
-                unknown_state => {
-                    return Err(GsError::Provisioning(format!(
-                        "Unhandled state: {} - error: {:?}",
-                        unknown_state, state_response.error_details
                     )));
                 }
             }

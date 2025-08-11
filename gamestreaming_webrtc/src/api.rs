@@ -364,6 +364,16 @@ impl GssvApi {
     }
 }
 
+
+#[derive(Debug, Deserialize, Serialize)]
+pub enum SessionState {
+    WaitingForResources,
+    Provisioning,
+    Provisioned,
+    ReadyToConnect,
+    Failed
+}
+
 /* Requests */
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -651,17 +661,10 @@ pub struct SessionResponse {
     session_path: String,
 }
 
-pub enum SessionState {
-    WaitingForResources,
-    ReadyToConnect,
-    Provisioning,
-    Provisioned,
-}
-
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct SessionStateResponse {
-    pub state: String,
+    pub state: SessionState,
     pub error_details: Option<ErrorDetails>,
 }
 
