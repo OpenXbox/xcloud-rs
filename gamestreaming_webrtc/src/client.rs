@@ -214,8 +214,18 @@ impl GamestreamingClient {
             .set_ice(session, ice_candidate_init)
             .await
             .map_err(GsError::ApiError)?;
-        self.api.get_ice(session)
-            .await
+
+        let mut ice_result = self.api.get_ice(session).await;
+
+        while ice_result.is_err() {
+            ice_result = self.api.get_ice(session)
+                .await;
+
+            println!("Waiting for ICE result...");
+            tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+        }
+
+        ice_result
             .map_err(GsError::ApiError)
     }
 
