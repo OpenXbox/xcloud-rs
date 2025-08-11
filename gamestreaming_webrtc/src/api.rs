@@ -571,8 +571,8 @@ pub struct ClientCloudSettings {
 /* Responses */
 #[derive(Serialize, Deserialize, Debug)]
 pub struct ErrorDetails {
-    code: String,
-    message: String,
+    code: Option<String>,
+    message: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]

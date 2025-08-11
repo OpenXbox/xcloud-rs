@@ -1,5 +1,15 @@
 use anyhow::Result;
+use ffmpeg_next::{codec, filter, format, frame, media};
+use webrtc::rtp::codecs::h264::H264Packet;
+use webrtc::rtp::packetizer::Depacketizer;
+use tokio::io::{AsyncWrite,AsyncWriteExt};
 
+use std::alloc::{self, alloc};
+use std::any::Any;
+use std::ptr;
+use std::io::Write;
+use std::mem::zeroed;
+use std::ffi::CStr;
 use std::fs::File;
 use std::sync::Arc;
 use std::collections::HashMap;
@@ -16,6 +26,7 @@ use webrtc::ice_transport::ice_server::RTCIceServer;
 use webrtc::interceptor::registry::Registry;
 use webrtc::media::io::h264_writer::H264Writer;
 use webrtc::media::io::ogg_writer::OggWriter;
+use webrtc::media::io::h264_reader::H264Reader;
 use webrtc::peer_connection::configuration::RTCConfiguration;
 use webrtc::peer_connection::peer_connection_state::RTCPeerConnectionState;
 use webrtc::peer_connection::sdp::session_description::RTCSessionDescription;
@@ -59,7 +70,20 @@ lazy_static! {
 const WINDOW_WIDTH: i32 = 640;
 const WINDOW_HEIGHT: i32 = 480;
 
-use std::ptr;
+const NALU_TTYPE_STAP_A: u32 = 24;
+const NALU_TTYPE_SPS: u32 = 7;
+const NALU_TYPE_BITMASK: u32 = 0x1F;
+
+fn is_key_frame(data: &[u8]) -> bool {
+    if data.len() < 4 {
+        false
+    } else {
+        let word = u32::from_be_bytes([data[0], data[1], data[2], data[3]]);
+        let nalu_type = (word >> 24) & NALU_TYPE_BITMASK;
+        (nalu_type == NALU_TTYPE_STAP_A && (word & NALU_TYPE_BITMASK) == NALU_TTYPE_SPS)
+            || (nalu_type == NALU_TTYPE_SPS)
+    }
+}
 
 async fn save_to_disk(
     track: Arc<TrackRemote>,
@@ -130,8 +154,67 @@ async fn create_peer_connection() -> Result<RTCPeerConnection, webrtc::Error> {
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // XCloud part
+    let mut window = unsafe { zeroed() };
+    let mut renderer = unsafe { zeroed() };
+    let mut texture = unsafe { zeroed() };
+
+    unsafe {
+        if SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO) == false {
+            println!("SDL_Init Error: {:?}", CStr::from_ptr(SDL_GetError()));
+            return Err("SDL Init failed".into());
+        }
+
+        // Create a window
+        window = SDL_CreateWindow(
+            c"SDL3 Video Playback".as_ptr(),
+            1920,
+            1080,
+            SDL_WindowFlags::default()
+        );
+        
+        if window.is_null() {
+            println!("SDL_CreateWindow Error: {:?}", CStr::from_ptr(SDL_GetError()));
+            SDL_Quit();
+            return Err("SDL_CreateWindow Error".into());
+        }
+
+        renderer = SDL_CreateRenderer(window, ptr::null());
+
+        if renderer.is_null() {
+            println!("SDL_CreateRenderer Error: {:?}", CStr::from_ptr(SDL_GetError()));
+            SDL_Quit();
+            return Err("SDL_CreateRenderer Error".into());
+        }
+
+        texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_IYUV, SDL_TEXTUREACCESS_STREAMING, 1920, 1080);
+        if texture.is_null() {
+            println!("SDL_CreateTexture Error: {:?}", CStr::from_ptr(SDL_GetError()));
+            SDL_Quit();
+            return Err("SDL_CreateTexture Error".into());
+        }
+    }
+
 
     let ts = authenticate(TOKENS_FILEPATH).await?;
+
+    /*
+    let xcloud = GamestreamingClient::new(
+        Platform::Home,
+        &ts.gssv_token.token,
+        &ts.xcloud_transfer_token.lpt,
+    )
+    .await?;
+
+    let session = match xcloud.lookup_consoles().await {
+        Ok(consoles) => {
+            let c = consoles.results.first().unwrap();
+            xcloud.start_stream_xhome(&c.server_id).await?
+        },
+        Err(err) => {
+            return Err("No consoles received from API".into());
+        }
+    };
+    */
 
     let xcloud = GamestreamingClient::new(
         Platform::Cloud,
@@ -139,7 +222,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         &ts.xcloud_transfer_token.lpt,
     )
     .await?;
-
     let session = match xcloud.lookup_games().await?.first() {
         Some(title) => {
             println!("Starting title: {:?}", title);
@@ -297,6 +379,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }));
     }
 
+    /*
     let (video_file, audio_file) = ("video.mkv", "audio.ogg");
 
     let h264_writer: Arc<Mutex<dyn webrtc::media::io::Writer + Send + Sync>> =
@@ -304,6 +387,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let ogg_writer: Arc<Mutex<dyn webrtc::media::io::Writer + Send + Sync>> = Arc::new(Mutex::new(
         OggWriter::new(File::create(audio_file)?, 48000, 2)?,
     ));
+    */
+
+    let (mut video_tx, mut video_rx) = tokio::sync::mpsc::channel(10);
+    let (mut audio_tx, mut audio_rx) = tokio::sync::mpsc::channel(10);
 
     let notify_tx = Arc::new(Notify::new());
     let notify_rx = notify_tx.clone();
@@ -334,7 +421,26 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         });
 
+        let (sender, filenamebase) = match track.kind() {
+            RTPCodecType::Video => (video_tx.clone(), "video"),
+            RTPCodecType::Audio => (audio_tx.clone(), "audio"),
+            RTPCodecType::Unspecified => panic!("Unexpected track type!")
+        };
 
+        Box::pin(async move {
+            loop {
+                if track.kind() == RTPCodecType::Video {
+                    if let Ok((a,_b)) = track.read_rtp().await {
+                        if !a.payload.is_empty() {
+                            let res = sender.send(a.payload).await;
+                            if let Err(e) = res {
+                                println!("Sending RTP packet, Error: {:?}", e);
+                            }
+                        }
+                    }
+                }
+            }
+        })
     }));
 
     // Create an offer to send to the other process
@@ -401,108 +507,85 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("Press ctrl-c to stop");
 
+    ffmpeg_next::init()?;
+
+    let mut decoder = codec::decoder::new()
+        .open_as(codec::decoder::find(codec::Id::H264))
+        .unwrap()
+        .video()
+        .unwrap();
+
     unsafe {
-        if SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO) == false {
-            println!("SDL_Init Error: {:?}", SDL_GetError());
-            return Err("SDL Init failed".into());
-        }
-
-        // Create a window
-        let window = SDL_CreateWindow(
-            b"SDL3 Video Playback\0".as_ptr() as *const i8,
-            0,
-            0,
-            SDL_WINDOWPOS_CENTERED as u64
-        );
-
-        if window.is_null() {
-            println!("SDL_CreateWindow Error: {:?}", SDL_GetError());
-            SDL_Quit();
-            return Err("SDL_CreateWindow Error".into());
-        }
-
-         // Create a renderer
-        let renderer = SDL_CreateRenderer(
-            window,
-            "Video renderer".as_ptr() as *mut _
-        );
-        if renderer.is_null() {
-            println!("SDL_CreateRenderer Error: {:?}", SDL_GetError());
-            SDL_DestroyWindow(window);
-            SDL_Quit();
-            return Err("SDL_CreateRenderer".into());
-        }
-
         // Create a channel to signal the main loop to exit
         let (exit_tx, mut exit_rx) = tokio::sync::mpsc::channel::<()>(1);
 
-        //Event loop
-        let mut event: SDL_Event = std::mem::zeroed();
-        let mut frame_buffer: Vec<u8> = vec![0; (WINDOW_WIDTH * WINDOW_HEIGHT * 3 / 2) as usize];
+        // Clear the screen
+        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+        SDL_RenderClear(renderer);
+
+        let mut has_keyframe = false;
+        let mut h264pkt = H264Packet::default();
+        let mut evt: SDL_Event = zeroed();
 
         'running: loop {
-            tokio::select! {
-                result = track.read_rtp() => {
-                    match result {
-                        Ok((rtp_packet, _)) => {
-                            // TODO: Implement H.264 decoding and render to texture
-                            // For now, just fill the framebuffer with a color
-                            frame_buffer.fill(128);
+            while SDL_PollEvent(&mut evt as *mut _) {
+                match evt.r#type {
+                    256 => {
+                        println!("Key: {}", evt.key.key);
+                        let _ = exit_tx.send(()).await;
+                    },
+                    _ => {
+                        println!("Unhandled evt: {:?}", evt.r#type);
+                    }
+                }
 
-                            // Example: Directly copy RTP payload to framebuffer (for raw YUV420p)
-                            // This assumes the RTP payload is raw YUV420p data
-                            frame_buffer.copy_from_slice(&rtp_packet.payload);
+            }
 
-                            // Update texture with new data
-                            texture.update(None, &frame_buffer, WINDOW_WIDTH as usize * 3 / 2).unwrap();
+            if let Ok(payload) = video_rx.try_recv() {
+                if !has_keyframe {
+                    has_keyframe = is_key_frame(&payload);
+                }
 
-                            // Clear the screen
-                            SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
-                            SDL_RenderClear(renderer);
+                if has_keyframe {
+                    if let Ok(data) = h264pkt.depacketize(&payload) {
+                        let mut pkt = ffmpeg_next::Packet::copy(&data);
 
-                            // Copy the texture to the screen
-                            //SDL_RenderCopy(renderer, texture, None, None).unwrap();
-
-                            // Present the back buffer
-                            SDL_RenderPresent(renderer);
-                        }
-                        Err(err) => {
-                            println!("Error reading RTP packet: {}", err);
-                            break 'running;
+                        if decoder.send_packet(&mut pkt).is_ok() {
+                            let mut frame = frame::Video::empty();
+                            while decoder.receive_frame(&mut frame).is_ok() {
+                                //println!("ok");
+                                SDL_UpdateYUVTexture(
+                                    texture,
+                                    ptr::null(),
+                                    frame.data(0).as_ptr(),
+                                    frame.plane_width(0) as i32,
+                                    frame.data(1).as_ptr(),
+                                    frame.plane_width(1) as i32,
+                                    frame.data(2).as_ptr(),
+                                    frame.plane_width(2) as i32
+                                );
+            
+                                SDL_RenderTexture(renderer, texture, ptr::null(), ptr::null());
+            
+                                // Present the back buffer
+                                SDL_RenderPresent(renderer);
+                            }
                         }
                     }
                 }
-                _ = notify_rx.notified() => {
-                    println!("Received notification, exiting loop");
-                    break 'running;
-                }
-                _ = exit_rx.recv() => {
-                    println!("Received exit signal, exiting loop");
-                    break 'running;
-                }
-                _ = tokio::task::spawn_blocking(move || {
-                    if SDL_PollEvent(&mut event) {
-                        match event.r#type {
-                            SDL_QUIT => {
-                                println!("SDL_QUIT received, sending exit signal");
-                                let _ = exit_tx.try_send(());
-                            }
-                            SDL_KEYDOWN => {
-                                if event.key.key == SDLK_ESCAPE {
-                                    println!("SDLK_ESCAPE received, sending exit signal");
-                                    let _ = exit_tx.try_send(());
-                                }
-                            }
-                            _ => {}
-                        }
-                    }
-                }) => {}
+            }
+
+            if let Ok(exit_signal) = exit_rx.try_recv() {
+                println!("Received exit signal, exiting loop");
+                break 'running;
             }
         }
 
+        /*
         SDL_DestroyRenderer(renderer);
         SDL_DestroyWindow(window);
         SDL_Quit();
+        */
     }
 
     Ok(())

@@ -1,6 +1,6 @@
 use std::str::FromStr;
 
-use chrono::{Duration, Utc};
+use chrono::{Utc};
 
 use crate::api::{GssvApi, SessionState};
 use crate::api::{
@@ -46,7 +46,7 @@ pub struct GamestreamingClient {
 }
 
 impl GamestreamingClient {
-    const CONNECTION_TIMEOUT_SECS: i64 = 30;
+    const CONNECTION_TIMEOUT_SECS: i64 = 120;
 
     pub async fn new(
         platform: Platform,
@@ -109,7 +109,7 @@ impl GamestreamingClient {
         let start_time = Utc::now();
 
         while Utc::now() - start_time
-            < Duration::seconds(GamestreamingClient::CONNECTION_TIMEOUT_SECS)
+            < chrono::Duration::seconds(GamestreamingClient::CONNECTION_TIMEOUT_SECS)
         {
             let state_response = self.api.get_session_state(&session).await?;
             match state_response.state {
@@ -138,8 +138,8 @@ impl GamestreamingClient {
                 }
             }
 
-            self.lookup_games().await?;
-            //std::thread::sleep(std::time::Duration::from_secs(1));
+            //self.lookup_games().await?;
+            tokio::time::sleep(std::time::Duration::from_secs(3)).await;
         }
 
         Err(GsError::Provisioning(

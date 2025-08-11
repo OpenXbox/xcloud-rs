@@ -10,3 +10,4 @@ anyhow = "1"
 gamestreaming_webrtc = { path = "../gamestreaming_webrtc" }
 tokio = { version = "1", features = ["full"] }
 sdl3-sys = "0.5.4"
+ffmpeg-next = { version = "7.1.0" }
