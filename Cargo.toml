@@ -7,5 +7,5 @@ members = [
     "gamestreaming_webrtc",
     "teredo",
     "client_gstreamer",
-    "client_sdl2"
+    "client_sdl3"
 ]
