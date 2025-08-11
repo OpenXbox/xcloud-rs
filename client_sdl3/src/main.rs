@@ -1,4 +1,5 @@
 use anyhow::Result;
+
 use std::fs::File;
 use std::sync::Arc;
 use std::collections::HashMap;
@@ -31,6 +32,8 @@ use gamestreaming_webrtc::api::IceCandidate;
 use gamestreaming_webrtc::{GamestreamingClient, Platform};
 use gamestreaming_webrtc::auth::authenticate;
 
+use sdl3_sys::everything::*;
+
 #[macro_use]
 extern crate lazy_static;
 
@@ -52,38 +55,18 @@ lazy_static! {
     static ref GATHERED_CANDIDATES: Arc<Mutex<Vec<RTCIceCandidate>>> = Arc::new(Mutex::new(vec![]));
 }
 
+
+const WINDOW_WIDTH: i32 = 640;
+const WINDOW_HEIGHT: i32 = 480;
+
+use std::ptr;
+
 async fn save_to_disk(
-    writer: Arc<Mutex<dyn webrtc::media::io::Writer + Send + Sync>>,
     track: Arc<TrackRemote>,
     notify: Arc<Notify>,
 ) -> Result<()> {
-    loop {
-        tokio::select! {
-            result = track.read_rtp() => {
-                if let Ok((rtp_packet, _)) = result {
-                    let mut w = writer.lock().await;
-                    w.write_rtp(&rtp_packet)?;
-                }else{
-                    println!("file closing begin after read_rtp error");
-                    let mut w = writer.lock().await;
-                    if let Err(err) = w.close() {
-                        println!("file close err: {}", err);
-                    }
-                    println!("file closing end after read_rtp error");
-                    return Ok(());
-                }
-            }
-            _ = notify.notified() => {
-                println!("file closing begin after notified");
-                let mut w = writer.lock().await;
-                if let Err(err) = w.close() {
-                    println!("file close err: {}", err);
-                }
-                println!("file closing end after notified");
-                return Ok(());
-            }
-        }
-    }
+    println!("Exited loop, cleaning up SDL");
+    Ok(())
 }
 
 async fn create_peer_connection() -> Result<RTCPeerConnection, webrtc::Error> {
@@ -325,9 +308,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let notify_tx = Arc::new(Notify::new());
     let notify_rx = notify_tx.clone();
 
-    // Set a handler for when a new remote track starts, this handler saves buffers to disk as
-    // an ivf file, since we could have multiple video tracks we provide a counter.
-    // In your application this is where you would handle/process video
     let pc = Arc::downgrade(&peer_connection);
     peer_connection.on_track(Box::new(move |track, _receiver, _transceiver| {
         // Send a PLI on an interval so that the publisher is pushing a keyframe every rtcpPLIInterval
@@ -354,24 +334,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         });
 
-        let notify_rx2 = Arc::clone(&notify_rx);
-        let h264_writer2 = Arc::clone(&h264_writer);
-        let ogg_writer2 = Arc::clone(&ogg_writer);
-        Box::pin(async move {
-            let codec = track.codec();
-            let mime_type = codec.capability.mime_type.to_lowercase();
-            if mime_type == MIME_TYPE_OPUS.to_lowercase() {
-                println!("Got Opus track, saving to disk as output.opus (48 kHz, 2 channels)");
-                tokio::spawn(async move {
-                    let _ = save_to_disk(ogg_writer2, track, notify_rx2).await;
-                });
-            } else if mime_type == MIME_TYPE_H264.to_lowercase() {
-                println!("Got h264 track, saving to disk as output.h264");
-                    tokio::spawn(async move {
-                        let _ = save_to_disk(h264_writer2, track, notify_rx2).await;
-                    });
-            }
-        })
+
     }));
 
     // Create an offer to send to the other process
@@ -437,16 +400,110 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     println!("Press ctrl-c to stop");
-    tokio::select! {
-        _ = done_rx.recv() => {
-            println!("received done signal!");
+
+    unsafe {
+        if SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO) == false {
+            println!("SDL_Init Error: {:?}", SDL_GetError());
+            return Err("SDL Init failed".into());
         }
-        _ = tokio::signal::ctrl_c() => {
-            println!("");
+
+        // Create a window
+        let window = SDL_CreateWindow(
+            b"SDL3 Video Playback\0".as_ptr() as *const i8,
+            0,
+            0,
+            SDL_WINDOWPOS_CENTERED as u64
+        );
+
+        if window.is_null() {
+            println!("SDL_CreateWindow Error: {:?}", SDL_GetError());
+            SDL_Quit();
+            return Err("SDL_CreateWindow Error".into());
         }
-    };
+
+         // Create a renderer
+        let renderer = SDL_CreateRenderer(
+            window,
+            "Video renderer".as_ptr() as *mut _
+        );
+        if renderer.is_null() {
+            println!("SDL_CreateRenderer Error: {:?}", SDL_GetError());
+            SDL_DestroyWindow(window);
+            SDL_Quit();
+            return Err("SDL_CreateRenderer".into());
+        }
+
+        // Create a channel to signal the main loop to exit
+        let (exit_tx, mut exit_rx) = tokio::sync::mpsc::channel::<()>(1);
+
+        //Event loop
+        let mut event: SDL_Event = std::mem::zeroed();
+        let mut frame_buffer: Vec<u8> = vec![0; (WINDOW_WIDTH * WINDOW_HEIGHT * 3 / 2) as usize];
+
+        'running: loop {
+            tokio::select! {
+                result = track.read_rtp() => {
+                    match result {
+                        Ok((rtp_packet, _)) => {
+                            // TODO: Implement H.264 decoding and render to texture
+                            // For now, just fill the framebuffer with a color
+                            frame_buffer.fill(128);
+
+                            // Example: Directly copy RTP payload to framebuffer (for raw YUV420p)
+                            // This assumes the RTP payload is raw YUV420p data
+                            frame_buffer.copy_from_slice(&rtp_packet.payload);
+
+                            // Update texture with new data
+                            texture.update(None, &frame_buffer, WINDOW_WIDTH as usize * 3 / 2).unwrap();
+
+                            // Clear the screen
+                            SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+                            SDL_RenderClear(renderer);
+
+                            // Copy the texture to the screen
+                            //SDL_RenderCopy(renderer, texture, None, None).unwrap();
+
+                            // Present the back buffer
+                            SDL_RenderPresent(renderer);
+                        }
+                        Err(err) => {
+                            println!("Error reading RTP packet: {}", err);
+                            break 'running;
+                        }
+                    }
+                }
+                _ = notify_rx.notified() => {
+                    println!("Received notification, exiting loop");
+                    break 'running;
+                }
+                _ = exit_rx.recv() => {
+                    println!("Received exit signal, exiting loop");
+                    break 'running;
+                }
+                _ = tokio::task::spawn_blocking(move || {
+                    if SDL_PollEvent(&mut event) {
+                        match event.r#type {
+                            SDL_QUIT => {
+                                println!("SDL_QUIT received, sending exit signal");
+                                let _ = exit_tx.try_send(());
+                            }
+                            SDL_KEYDOWN => {
+                                if event.key.key == SDLK_ESCAPE {
+                                    println!("SDLK_ESCAPE received, sending exit signal");
+                                    let _ = exit_tx.try_send(());
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+                }) => {}
+            }
+        }
+
+        SDL_DestroyRenderer(renderer);
+        SDL_DestroyWindow(window);
+        SDL_Quit();
+    }
 
     Ok(())
 }
-
-// fn main() {}
