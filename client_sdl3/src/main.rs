@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{Result, anyhow};
 use ffmpeg_next::{codec, filter, format, frame, media};
 use webrtc::rtp::codecs::h264::H264Packet;
 use webrtc::rtp::packetizer::Depacketizer;
@@ -11,6 +11,7 @@ use std::io::Write;
 use std::mem::zeroed;
 use std::ffi::CStr;
 use std::fs::File;
+use bytes::Bytes;
 use std::sync::Arc;
 use std::collections::HashMap;
 use tokio::sync::{Mutex, Notify};
@@ -151,53 +152,11 @@ async fn create_peer_connection() -> Result<RTCPeerConnection, webrtc::Error> {
     api.new_peer_connection(config).await
 }
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // XCloud part
-    let mut window = unsafe { zeroed() };
-    let mut renderer = unsafe { zeroed() };
-    let mut texture = unsafe { zeroed() };
+async fn start_remote_connection(audio_tx: tokio::sync::mpsc::Sender<Bytes>, video_tx: tokio::sync::mpsc::Sender<Bytes>) -> Result<()> {
+    let ts = authenticate(TOKENS_FILEPATH)
+        .await
+        .map_err(|e|anyhow!("Authentication failed"))?;
 
-    unsafe {
-        if SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO) == false {
-            println!("SDL_Init Error: {:?}", CStr::from_ptr(SDL_GetError()));
-            return Err("SDL Init failed".into());
-        }
-
-        // Create a window
-        window = SDL_CreateWindow(
-            c"SDL3 Video Playback".as_ptr(),
-            1920,
-            1080,
-            SDL_WindowFlags::default()
-        );
-        
-        if window.is_null() {
-            println!("SDL_CreateWindow Error: {:?}", CStr::from_ptr(SDL_GetError()));
-            SDL_Quit();
-            return Err("SDL_CreateWindow Error".into());
-        }
-
-        renderer = SDL_CreateRenderer(window, ptr::null());
-
-        if renderer.is_null() {
-            println!("SDL_CreateRenderer Error: {:?}", CStr::from_ptr(SDL_GetError()));
-            SDL_Quit();
-            return Err("SDL_CreateRenderer Error".into());
-        }
-
-        texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_IYUV, SDL_TEXTUREACCESS_STREAMING, 1920, 1080);
-        if texture.is_null() {
-            println!("SDL_CreateTexture Error: {:?}", CStr::from_ptr(SDL_GetError()));
-            SDL_Quit();
-            return Err("SDL_CreateTexture Error".into());
-        }
-    }
-
-
-    let ts = authenticate(TOKENS_FILEPATH).await?;
-
-    /*
     let xcloud = GamestreamingClient::new(
         Platform::Home,
         &ts.gssv_token.token,
@@ -211,11 +170,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             xcloud.start_stream_xhome(&c.server_id).await?
         },
         Err(err) => {
-            return Err("No consoles received from API".into());
+            return Err(anyhow!("No consoles received from API"));
         }
     };
-    */
 
+
+    /*
     let xcloud = GamestreamingClient::new(
         Platform::Cloud,
         &ts.gssv_token.token,
@@ -234,6 +194,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             return Err("No titles received from API".into());
         }
     };
+    */
 
     // WebRTC part
 
@@ -389,9 +350,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     ));
     */
 
-    let (mut video_tx, mut video_rx) = tokio::sync::mpsc::channel(10);
-    let (mut audio_tx, mut audio_rx) = tokio::sync::mpsc::channel(10);
-
     let notify_tx = Arc::new(Notify::new());
     let notify_rx = notify_tx.clone();
 
@@ -466,7 +424,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         None => {
             peer_connection.close().await?;
-            return Err("Failed to get successful SDP answer".into());
+            return Err(anyhow!("Failed to get successful SDP answer"));
         }
     }
 
@@ -489,6 +447,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let ice_response = xcloud.exchange_ice(&session, candidates_ready).await?;
     println!("ICE Response {:?}", ice_response);
 
+    if ice_response.exchange_response.is_empty()  {
+        return Err(anyhow!("No candidates in ICE response"));
+    }
+
     println!("Adding remote ICE candidates");
     for candidate in ice_response.exchange_response {
         println!("Adding remote ICE candidate={:?}", candidate);
@@ -505,6 +467,61 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         peer_connection.add_ice_candidate(c).await?;
     }
 
+    Ok(())
+}
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    // XCloud part
+    let mut window = unsafe { zeroed() };
+    let mut renderer = unsafe { zeroed() };
+    let mut texture = unsafe { zeroed() };
+
+    unsafe {
+        if SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO) == false {
+            println!("SDL_Init Error: {:?}", CStr::from_ptr(SDL_GetError()));
+            return Err(anyhow!("SDL Init failed"));
+        }
+
+        // Create a window
+        window = SDL_CreateWindow(
+            c"SDL3 Video Playback".as_ptr(),
+            1920,
+            1080,
+            SDL_WindowFlags::default()
+        );
+        
+        if window.is_null() {
+            println!("SDL_CreateWindow Error: {:?}", CStr::from_ptr(SDL_GetError()));
+            SDL_Quit();
+            return Err(anyhow!("SDL_CreateWindow Error"));
+        }
+
+        renderer = SDL_CreateRenderer(window, ptr::null());
+
+        if renderer.is_null() {
+            println!("SDL_CreateRenderer Error: {:?}", CStr::from_ptr(SDL_GetError()));
+            SDL_Quit();
+            return Err(anyhow!("SDL_CreateRenderer Error"));
+        }
+
+        texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_IYUV, SDL_TEXTUREACCESS_STREAMING, 1920, 1080);
+        if texture.is_null() {
+            println!("SDL_CreateTexture Error: {:?}", CStr::from_ptr(SDL_GetError()));
+            SDL_Quit();
+            return Err(anyhow!("SDL_CreateTexture Error"));
+        }
+    }
+
+    let (mut video_tx, mut video_rx) = tokio::sync::mpsc::channel(10);
+    let (mut audio_tx, mut audio_rx) = tokio::sync::mpsc::channel(10);
+
+    println!("Spawning remote connection...");
+    let handle = tokio::spawn(start_remote_connection(audio_tx, video_tx));
+
+
+    // Create a channel to signal the main loop to exit
+    let (exit_tx, mut exit_rx) = tokio::sync::mpsc::channel::<()>(1);
     println!("Press ctrl-c to stop");
 
     ffmpeg_next::init()?;
@@ -516,9 +533,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .unwrap();
 
     unsafe {
-        // Create a channel to signal the main loop to exit
-        let (exit_tx, mut exit_rx) = tokio::sync::mpsc::channel::<()>(1);
-
         // Clear the screen
         SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
         SDL_RenderClear(renderer);
@@ -535,7 +549,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         let _ = exit_tx.send(()).await;
                     },
                     _ => {
-                        println!("Unhandled evt: {:?}", evt.r#type);
+                        // println!("Unhandled evt: {:?}", evt.r#type);
                     }
                 }
 
@@ -581,11 +595,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
 
-        /*
         SDL_DestroyRenderer(renderer);
         SDL_DestroyWindow(window);
         SDL_Quit();
-        */
     }
 
     Ok(())
