@@ -287,7 +287,7 @@ impl App {
                 err.debug().unwrap_or_else(|| glib::GString::from("None")),
             ),
             MessageView::Warning(warning) => {
-                println!("Warning: \"{}\"", warning.debug().unwrap());
+                log::warn!("Warning: \"{}\"", warning.debug().unwrap());
             }
             MessageView::Latency(_) => {
                 let _ = self.pipeline.recalculate_latency();

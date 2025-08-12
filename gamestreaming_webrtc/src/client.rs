@@ -1,5 +1,5 @@
 use std::str::FromStr;
-
+use log;
 use chrono::{Utc};
 
 use crate::api::{GssvApi, SessionState};
@@ -114,23 +114,23 @@ impl GamestreamingClient {
             let state_response = self.api.get_session_state(&session).await?;
             match state_response.state {
                 SessionState::WaitingForResources | SessionState::Provisioning => {
-                    println!("Waiting for session to get ready");
+                    log::debug!("Waiting for session to get ready");
                 }
                 SessionState::ReadyToConnect => {
-                    println!("Stream is ready to connect");
+                    log::debug!("Stream is ready to connect");
                     if let Err(connect_err) =
                         self.api.session_connect(&session, &self.transfer_token).await
                     {
-                        println!("Failed to connect to session");
+                        log::error!("Failed to connect to session");
                         return Err(connect_err.into());
                     }
                 }
                 SessionState::Provisioned => {
-                    println!("Game session is ready!");
+                    log::debug!("Game session is ready!");
                     return Ok(session);
                 }
                 SessionState::Failed => {
-                    println!("Failed to provision session");
+                    log::error!("Failed to provision session");
                     return Err(GsError::Provisioning(format!(
                         "Received failed state - error: {:?}",
                         state_response.error_details
@@ -180,7 +180,7 @@ impl GamestreamingClient {
             sdp_result = self.api.get_sdp(session)
                 .await;
 
-            println!("Waiting for SDP result...");
+            log::debug!("Waiting for SDP result...");
             tokio::time::sleep(std::time::Duration::from_secs(3)).await;
         }
 
@@ -221,7 +221,7 @@ impl GamestreamingClient {
             ice_result = self.api.get_ice(session)
                 .await;
 
-            println!("Waiting for ICE result...");
+            log::debug!("Waiting for ICE result...");
             tokio::time::sleep(std::time::Duration::from_secs(3)).await;
         }
 

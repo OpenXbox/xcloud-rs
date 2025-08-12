@@ -1,3 +1,4 @@
+use log;
 use serde::{Serialize, Deserialize};
 pub use xal;
 use xal::{
@@ -23,15 +24,15 @@ pub async fn authenticate(tokens_filepath: &str) -> Result<GamestreamingAuthCont
     let ts = match TokenStore::load_from_file(tokens_filepath) {
         Ok(ts) => ts,
         Err(err) => {
-            println!("Failed to load tokens! err={err}");
+            log::warn!("Failed to load tokens! err={err}");
             let mut authenticator = XalAuthenticator::default();
-            println!("Authenticating via SISU...");
+            log::info!("Authenticating via SISU...");
             let mut ts = Flows::xbox_live_sisu_full_flow(
                 &mut authenticator,
                 CliCallbackHandler
             ).await?;
 
-            println!("Saving new tokens...");
+            log::info!("Saving new tokens...");
             ts.update_timestamp();
             ts.save_to_file(tokens_filepath)?;
             ts
@@ -48,14 +49,14 @@ pub async fn authenticate(tokens_filepath: &str) -> Result<GamestreamingAuthCont
         "http://gssv.xboxlive.com/"
     )
     .await?;
-    println!("GSSV={gssv_token:?}");
+    log::debug!("GSSV={gssv_token:?}");
 
     // Get XCloud transfer token
     let xcloud_transfer_token = authenticator.refresh_token_for_scope::<XCloudTokenResponse>(
         ts.live_token.refresh_token().unwrap(),
         vec![Scope::new("service::http://Passport.NET/purpose::PURPOSE_XBOX_CLOUD_CONSOLE_TRANSFER_TOKEN".into())]
     ).await?; 
-    println!("XCLOUD_TRANSFER={xcloud_transfer_token:?}");
+    log::debug!("XCLOUD_TRANSFER={xcloud_transfer_token:?}");
 
     Ok(GamestreamingAuthContext {
         gssv_token,

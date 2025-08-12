@@ -1,4 +1,6 @@
 use anyhow::{Result, anyhow};
+use log;
+use simple_logger;
 use ffmpeg_next::{codec, filter, format, frame, media};
 use webrtc::rtp::codecs::h264::H264Packet;
 use webrtc::rtp::packetizer::Depacketizer;
@@ -90,7 +92,7 @@ async fn save_to_disk(
     track: Arc<TrackRemote>,
     notify: Arc<Notify>,
 ) -> Result<()> {
-    println!("Exited loop, cleaning up SDL");
+    log::info!("Exited loop, cleaning up SDL");
     Ok(())
 }
 
@@ -152,7 +154,10 @@ async fn create_peer_connection() -> Result<RTCPeerConnection, webrtc::Error> {
     api.new_peer_connection(config).await
 }
 
-async fn start_remote_connection(audio_tx: tokio::sync::mpsc::Sender<Bytes>, video_tx: tokio::sync::mpsc::Sender<Bytes>) -> Result<()> {
+async fn start_remote_connection(
+    audio_tx: tokio::sync::mpsc::UnboundedSender<Arc<TrackRemote>>,
+    video_tx: tokio::sync::mpsc::UnboundedSender<Arc<TrackRemote>>
+) -> Result<()> {
     let ts = authenticate(TOKENS_FILEPATH)
         .await
         .map_err(|e|anyhow!("Authentication failed"))?;
@@ -184,9 +189,9 @@ async fn start_remote_connection(audio_tx: tokio::sync::mpsc::Sender<Bytes>, vid
     .await?;
     let session = match xcloud.lookup_games().await?.first() {
         Some(title) => {
-            println!("Starting title: {:?}", title);
+            log::info!("Starting title: {:?}", title);
             let session = xcloud.start_stream_xcloud(&title.title_id).await?;
-            println!("Session started successfully: {:?}", session);
+            log::info!("Session started successfully: {:?}", session);
 
             session
         }
@@ -208,7 +213,7 @@ async fn start_remote_connection(audio_tx: tokio::sync::mpsc::Sender<Bytes>, vid
     let candidates = Arc::clone(&GATHERED_CANDIDATES);
     peer_connection
         .on_ice_candidate(Box::new(move |c: Option<RTCIceCandidate>| {
-            println!("on_ice_candidate {:?}", c);
+            log::debug!("on_ice_candidate {:?}", c);
             let candidates2 = Arc::clone(&candidates);
             let pc2 = pc.clone();
             let pending_candidates3 = Arc::clone(&pending_candidates2);
@@ -218,12 +223,12 @@ async fn start_remote_connection(audio_tx: tokio::sync::mpsc::Sender<Bytes>, vid
                         let desc = pc.remote_description().await;
                         if desc.is_none() {
                             // Candidate pending
-                            println!("Candidate pending: {}", c);
+                            log::debug!("Candidate pending: {}", c);
                             let mut cs_pending = pending_candidates3.lock().await;
                             cs_pending.push(c);
                         } else {
                             // Candidate ready
-                            println!("Candidate ready: {}", c);
+                            log::debug!("Candidate ready: {}", c);
                             let mut cs_ready = candidates2.lock().await;
                             cs_ready.push(c);
                         }
@@ -283,13 +288,13 @@ async fn start_remote_connection(audio_tx: tokio::sync::mpsc::Sender<Bytes>, vid
     // This will notify you when the peer has connected/disconnected
     peer_connection
         .on_peer_connection_state_change(Box::new(move |s: RTCPeerConnectionState| {
-            println!("Peer Connection State has changed: {}", s);
+            log::info!("Peer Connection State has changed: {}", s);
 
             if s == RTCPeerConnectionState::Failed {
                 // Wait until PeerConnection has had no network activity for 30 seconds or another failure. It may be reconnected using an ICE Restart.
                 // Use webrtc.PeerConnectionStateDisconnected if you are interested in detecting faster timeout.
                 // Note that the PeerConnection may come back from PeerConnectionStateDisconnected.
-                println!("Peer Connection has gone to failed exiting");
+                log::error!("Peer Connection has gone to failed exiting");
                 let _ = done_tx.try_send(());
             }
 
@@ -301,7 +306,7 @@ async fn start_remote_connection(audio_tx: tokio::sync::mpsc::Sender<Bytes>, vid
     for (name, channel) in channel_defs.into_iter() {
         let d1 = Arc::clone(&channel);
         channel.on_open(Box::new(move || {
-            println!("Data channel '{}'-'{}' open", d1.label(), d1.id());
+            log::info!("Data channel '{}'-'{}' open", d1.label(), d1.id());
 
             Box::pin(async move {
                 let result = Result::<usize, webrtc::Error>::Ok(0);
@@ -314,7 +319,7 @@ async fn start_remote_connection(audio_tx: tokio::sync::mpsc::Sender<Bytes>, vid
                             /*
                             From example code - Sending random strings over datachannel
                             let message = math_rand_alpha(15);
-                            println!("Sending '{}'", message);
+                            log::info!("Sending '{}'", message);
                             result = d2.send_text(message).await.map_err(Into::into);
                             */
                         }
@@ -332,7 +337,7 @@ async fn start_remote_connection(audio_tx: tokio::sync::mpsc::Sender<Bytes>, vid
                         format!("Binary={:?}", msg.data)
                     }
                 };
-                println!(
+                log::info!(
                     "Message from DataChannel '{}': '{}'",
                     message_label, msg_str
                 );
@@ -379,26 +384,20 @@ async fn start_remote_connection(audio_tx: tokio::sync::mpsc::Sender<Bytes>, vid
             }
         });
 
-        let (sender, filenamebase) = match track.kind() {
-            RTPCodecType::Video => (video_tx.clone(), "video"),
-            RTPCodecType::Audio => (audio_tx.clone(), "audio"),
-            RTPCodecType::Unspecified => panic!("Unexpected track type!")
-        };
+        let video_sender = video_tx.clone();
+        let audio_sender = audio_tx.clone();
 
-        Box::pin(async move {
-            loop {
-                if track.kind() == RTPCodecType::Video {
-                    if let Ok((a,_b)) = track.read_rtp().await {
-                        if !a.payload.is_empty() {
-                            let res = sender.send(a.payload).await;
-                            if let Err(e) = res {
-                                println!("Sending RTP packet, Error: {:?}", e);
-                            }
-                        }
-                    }
-                }
+        match track.kind() {
+            RTPCodecType::Video => {
+                video_sender.send(track);
             }
-        })
+            RTPCodecType::Audio => {
+                audio_sender.send(track);
+            }
+            _ => {}
+        }
+
+        Box::pin(async {})
     }));
 
     // Create an offer to send to the other process
@@ -410,15 +409,15 @@ async fn start_remote_connection(audio_tx: tokio::sync::mpsc::Sender<Bytes>, vid
 
     // Xcloud
     let sdp_response = xcloud.exchange_sdp(&session, &sdp_offer_string).await?;
-    println!("SDP Response {:?}", sdp_response);
+    log::debug!("SDP Response {:?}", sdp_response);
 
     match sdp_response.exchange_response.sdp {
         Some(sdp) => {
-            println!("Setting SDP answer...");
+            log::debug!("Setting SDP answer...");
             let answer = RTCSessionDescription::answer(sdp)?;
-            println!("SDP answer: {:?}", answer);
+            log::debug!("SDP answer: {:?}", answer);
             if let Err(sdp_fail) = peer_connection.set_remote_description(answer).await {
-                println!("Failed to set remote SDP answer: {:?}", sdp_fail);
+                log::error!("Failed to set remote SDP answer: {:?}", sdp_fail);
                 return Err(sdp_fail.into());
             }
         }
@@ -445,17 +444,17 @@ async fn start_remote_connection(audio_tx: tokio::sync::mpsc::Sender<Bytes>, vid
 
     // Xcloud
     let ice_response = xcloud.exchange_ice(&session, candidates_ready).await?;
-    println!("ICE Response {:?}", ice_response);
+    log::debug!("ICE Response {:?}", ice_response);
 
     if ice_response.exchange_response.is_empty()  {
         return Err(anyhow!("No candidates in ICE response"));
     }
 
-    println!("Adding remote ICE candidates");
+    log::debug!("Adding remote ICE candidates");
     for candidate in ice_response.exchange_response {
-        println!("Adding remote ICE candidate={:?}", candidate);
+        log::debug!("Adding remote ICE candidate={:?}", candidate);
         if candidate.candidate.contains("end-of-candidates") {
-            println!("End of candidates, jumping out");
+            log::debug!("End of candidates, jumping out");
             break;
         }
         let c = RTCIceCandidateInit {
@@ -472,14 +471,24 @@ async fn start_remote_connection(audio_tx: tokio::sync::mpsc::Sender<Bytes>, vid
 
 #[tokio::main]
 async fn main() -> Result<()> {
+
+    simple_logger::init_with_level(log::Level::Info)?;
+
     // XCloud part
     let mut window = unsafe { zeroed() };
     let mut renderer = unsafe { zeroed() };
     let mut texture = unsafe { zeroed() };
+    let mut audiostream = unsafe { zeroed() };
 
     unsafe {
+        let audiospec = SDL_AudioSpec {
+            format: SDL_AUDIO_F32,
+            channels: 2,
+            freq: 48000
+        };
+
         if SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO) == false {
-            println!("SDL_Init Error: {:?}", CStr::from_ptr(SDL_GetError()));
+            log::error!("SDL_Init Error: {:?}", CStr::from_ptr(SDL_GetError()));
             return Err(anyhow!("SDL Init failed"));
         }
 
@@ -492,7 +501,7 @@ async fn main() -> Result<()> {
         );
         
         if window.is_null() {
-            println!("SDL_CreateWindow Error: {:?}", CStr::from_ptr(SDL_GetError()));
+            log::error!("SDL_CreateWindow Error: {:?}", CStr::from_ptr(SDL_GetError()));
             SDL_Quit();
             return Err(anyhow!("SDL_CreateWindow Error"));
         }
@@ -500,36 +509,49 @@ async fn main() -> Result<()> {
         renderer = SDL_CreateRenderer(window, ptr::null());
 
         if renderer.is_null() {
-            println!("SDL_CreateRenderer Error: {:?}", CStr::from_ptr(SDL_GetError()));
+            log::error!("SDL_CreateRenderer Error: {:?}", CStr::from_ptr(SDL_GetError()));
             SDL_Quit();
             return Err(anyhow!("SDL_CreateRenderer Error"));
         }
 
         texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_IYUV, SDL_TEXTUREACCESS_STREAMING, 1920, 1080);
         if texture.is_null() {
-            println!("SDL_CreateTexture Error: {:?}", CStr::from_ptr(SDL_GetError()));
+            log::error!("SDL_CreateTexture Error: {:?}", CStr::from_ptr(SDL_GetError()));
             SDL_Quit();
             return Err(anyhow!("SDL_CreateTexture Error"));
         }
+
+        audiostream = SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &audiospec, None, ptr::null_mut());
+        if audiostream.is_null() {
+            log::error!("SDL_OpenAudioDeviceStream Error: {:?}", CStr::from_ptr(SDL_GetError()));
+            SDL_Quit();
+            return Err(anyhow!("SDL_OpenAudioDeviceStream Error"));
+        }
     }
 
-    let (mut video_tx, mut video_rx) = tokio::sync::mpsc::channel(10);
-    let (mut audio_tx, mut audio_rx) = tokio::sync::mpsc::channel(10);
+    let (mut video_tx, mut video_rx) = tokio::sync::mpsc::unbounded_channel();
+    let (mut audio_tx, mut audio_rx) = tokio::sync::mpsc::unbounded_channel();
 
-    println!("Spawning remote connection...");
+    log::debug!("Spawning remote connection...");
     let handle = tokio::spawn(start_remote_connection(audio_tx, video_tx));
 
 
     // Create a channel to signal the main loop to exit
     let (exit_tx, mut exit_rx) = tokio::sync::mpsc::channel::<()>(1);
-    println!("Press ctrl-c to stop");
+    log::info!("Press ctrl-c to stop");
 
     ffmpeg_next::init()?;
 
-    let mut decoder = codec::decoder::new()
+    let mut video_decoder = codec::decoder::new()
         .open_as(codec::decoder::find(codec::Id::H264))
         .unwrap()
         .video()
+        .unwrap();
+
+    let mut audio_decoder = codec::decoder::new()
+        .open_as(codec::decoder::find(codec::Id::OPUS))
+        .unwrap()
+        .audio()
         .unwrap();
 
     unsafe {
@@ -537,60 +559,114 @@ async fn main() -> Result<()> {
         SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
         SDL_RenderClear(renderer);
 
+        let (mut got_audio, mut got_video) = (false, false);
         let mut has_keyframe = false;
         let mut h264pkt = H264Packet::default();
-        let mut evt: SDL_Event = zeroed();
+        let mut event: SDL_Event = zeroed();
+
+        let mut video_track = None;
+        let mut audio_track = None;
 
         'running: loop {
-            while SDL_PollEvent(&mut evt as *mut _) {
-                match evt.r#type {
+            while SDL_PollEvent(&mut event as *mut _) {
+                match event.r#type {
                     256 => {
-                        println!("Key: {}", evt.key.key);
+                        log::debug!("Key: {}", event.key.key);
                         let _ = exit_tx.send(()).await;
                     },
-                    _ => {
-                        // println!("Unhandled evt: {:?}", evt.r#type);
+                    evt_type => {
+                        // log::info!("Unhandled evt: {}", evt_type.0);
                     }
                 }
 
             }
 
-            if let Ok(payload) = video_rx.try_recv() {
-                if !has_keyframe {
-                    has_keyframe = is_key_frame(&payload);
-                }
+            if let Ok(a_track) = audio_rx.try_recv() {
+                audio_track.replace(a_track);
 
-                if has_keyframe {
-                    if let Ok(data) = h264pkt.depacketize(&payload) {
-                        let mut pkt = ffmpeg_next::Packet::copy(&data);
+                log::info!("Got audio track...");
+            }
 
-                        if decoder.send_packet(&mut pkt).is_ok() {
-                            let mut frame = frame::Video::empty();
-                            while decoder.receive_frame(&mut frame).is_ok() {
-                                //println!("ok");
-                                SDL_UpdateYUVTexture(
-                                    texture,
-                                    ptr::null(),
-                                    frame.data(0).as_ptr(),
-                                    frame.plane_width(0) as i32,
-                                    frame.data(1).as_ptr(),
-                                    frame.plane_width(1) as i32,
-                                    frame.data(2).as_ptr(),
-                                    frame.plane_width(2) as i32
-                                );
-            
-                                SDL_RenderTexture(renderer, texture, ptr::null(), ptr::null());
-            
-                                // Present the back buffer
-                                SDL_RenderPresent(renderer);
+            if let Ok(v_track) = video_rx.try_recv() {
+                video_track.replace(v_track);
+
+                log::info!("Got video track...");
+            }
+
+            if let Some(ref track) = audio_track {
+                if let Ok((rtp_packet, b)) = track.read_rtp().await {
+                    if !rtp_packet.payload.is_empty() {
+                        let payload = rtp_packet.payload;
+                        if !got_audio {
+                            got_audio = true;
+                            log::info!("Got first audio frame");
+                            if !SDL_ResumeAudioStreamDevice(audiostream) {
+                                log::error!("Failed to unpause audio stream");
+                            }
+                        }
+                        let mut pkt = ffmpeg_next::Packet::copy(&payload);
+        
+                        if audio_decoder.send_packet(&mut pkt).is_ok() {
+                            let mut frame = frame::Audio::empty();
+                            while audio_decoder.receive_frame(&mut frame).is_ok() {
+                                if !SDL_PutAudioStreamData(
+                                    audiostream,
+                                    frame.data(0).as_ptr() as *mut _,
+                                    frame.data(0).len() as i32
+                                ) {
+                                    log::error!("Failed to put data into audio stream");
+                                }
                             }
                         }
                     }
                 }
             }
 
+            if let Some(ref track) = video_track {
+                if let Ok((rtp_packet, b)) = track.read_rtp().await {
+                    if !rtp_packet.payload.is_empty() {
+                        let payload = rtp_packet.payload;
+                        if !got_video {
+                            got_video = true;
+                            log::info!("Got first video frame");
+                        }
+        
+                        if !has_keyframe {
+                            has_keyframe = is_key_frame(&payload);
+                        }
+        
+                        if has_keyframe {
+                            if let Ok(data) = h264pkt.depacketize(&payload) {
+                                let mut pkt = ffmpeg_next::Packet::copy(&data);
+        
+                                if video_decoder.send_packet(&mut pkt).is_ok() {
+                                    let mut frame = frame::Video::empty();
+                                    while video_decoder.receive_frame(&mut frame).is_ok() {
+                                        SDL_UpdateYUVTexture(
+                                            texture,
+                                            ptr::null(),
+                                            frame.data(0).as_ptr(),
+                                            frame.plane_width(0) as i32,
+                                            frame.data(1).as_ptr(),
+                                            frame.plane_width(1) as i32,
+                                            frame.data(2).as_ptr(),
+                                            frame.plane_width(2) as i32
+                                        );
+                    
+                                        SDL_RenderTexture(renderer, texture, ptr::null(), ptr::null());
+                    
+                                        // Present the back buffer
+                                        SDL_RenderPresent(renderer);
+                                    }
+                                }
+                            }
+                        }    
+                    }
+                }
+            }
+
             if let Ok(exit_signal) = exit_rx.try_recv() {
-                println!("Received exit signal, exiting loop");
+                log::info!("Received exit signal, exiting loop");
                 break 'running;
             }
         }

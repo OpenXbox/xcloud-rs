@@ -15,6 +15,7 @@ thiserror = "1"
 chrono = "0.4"
 serde-aux = "4.7"
 gamestreaming_auth = { path = "../gamestreaming_auth" }
+log = "0.4.27"
 
 [[example]]
 name = "gssv-api"
