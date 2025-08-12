@@ -18,6 +18,8 @@ pub enum GsError {
     Provisioning(String),
     #[error("Connection exchange failed")]
     ConnectionExchange(String),
+    #[error("Data channel init failed")]
+    DataChannelInit(String),
     #[error("Unknown error")]
     Unknown,
 }

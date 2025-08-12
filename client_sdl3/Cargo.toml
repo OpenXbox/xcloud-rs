@@ -4,7 +4,6 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-webrtc = "0.13"
 lazy_static = "1.5"
 anyhow = "1"
 gamestreaming_webrtc = { path = "../gamestreaming_webrtc" }

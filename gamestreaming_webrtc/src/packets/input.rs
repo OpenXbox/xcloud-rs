@@ -145,6 +145,12 @@ pub struct ClientMetadataReport {
     pub metadata: u8,
 }
 
+#[derive(Debug, Default, Eq, PartialEq, DekuRead, DekuWrite)]
+pub struct ServerMetadataReport {
+    pub video_height: u32,
+    pub video_width: u32,
+}
+
 #[derive(Debug, PartialEq, DekuRead, DekuWrite)]
 pub struct SequenceInfo {
     sequence_num: u32,
@@ -154,7 +160,7 @@ pub struct SequenceInfo {
 #[derive(Debug, PartialEq, DekuRead, DekuWrite)]
 pub struct InputPacket {
     report_type: InputReportType,
-    #[deku(cond = "!report_type.Vibration")]
+    #[deku(cond = "!report_type.Vibration && !report_type.ServerMetadata")]
     // Skip sequence info on vibration packets
     seq_info: Option<SequenceInfo>,
     #[deku(cond = "report_type.Metadata")]
@@ -163,6 +169,8 @@ pub struct InputPacket {
     gamepad_report: Option<GamepadReport>,
     #[deku(cond = "report_type.ClientMetadata")]
     client_metadata_report: Option<ClientMetadataReport>,
+    #[deku(cond = "report_type.ServerMetadata")]
+    server_metadata_report: Option<ServerMetadataReport>,
     #[deku(cond = "report_type.Vibration")]
     vibration_report: Option<VibrationReport>,
 }
@@ -174,6 +182,7 @@ impl InputPacket {
         metadata_report: Option<MetadataReport>,
         gamepad_report: Option<GamepadReport>,
         client_metadata_report: Option<ClientMetadataReport>,
+        server_metadata_report: Option<ServerMetadataReport>,
     ) -> Self {
         let report_type = {
             // Create initial report type with no bits set
@@ -189,6 +198,9 @@ impl InputPacket {
             if client_metadata_report.is_some() {
                 tmp_type.ClientMetadata = true;
             }
+            if server_metadata_report.is_some() {
+                tmp_type.ServerMetadata = true;
+            }
             tmp_type
         };
 
@@ -201,6 +213,7 @@ impl InputPacket {
             metadata_report,
             gamepad_report,
             client_metadata_report,
+            server_metadata_report,
             vibration_report: None,
         }
     }
@@ -264,6 +277,21 @@ mod tests {
         assert_eq!(vibration_payload.delay_ms, 0x1FF);
         assert_eq!(vibration_payload.repeat, 0x10);
     }
+
+    #[test]
+    fn deserialize_input_packet_server_metadata() {
+        let data = b"\x10\x38\x04\x00\x00\x80\x07\x00\x00";
+        let (rest, parsed) = InputPacket::from_bytes((&data[..], 0))
+            .unwrap();
+
+        assert!(rest.0.is_empty());
+    }
+
+     #[test]
+     fn deserialize_input_report_type() {
+         assert_eq!(InputReportType::from_bytes((&[0x80],0)).unwrap().1.Vibration, true);
+         assert_eq!(InputReportType::from_bytes((&[0x10],0)).unwrap().1.ServerMetadata, true);
+     }
 
     #[test]
     fn parse_input_report_type() {

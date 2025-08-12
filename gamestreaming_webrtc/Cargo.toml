@@ -6,6 +6,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+webrtc = "0.13"
 deku = "0.19"
 tokio = { version = "1", features = ["full"]}
 reqwest = { version = "0.11", features = ["json", "blocking"] }
@@ -16,6 +17,7 @@ chrono = "0.4"
 serde-aux = "4.7"
 gamestreaming_auth = { path = "../gamestreaming_auth" }
 log = "0.4.27"
+bytes = "1.10.1"
 
 [[example]]
 name = "gssv-api"

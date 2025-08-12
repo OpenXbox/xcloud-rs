@@ -1,13 +1,18 @@
-use deku::{DekuContainerRead, DekuContainerWrite};
-use tokio::time::{Instant, Interval};
+use std::sync::Arc;
 
-use super::base::{DataChannelMsg, GssvChannel, GssvChannelEvent};
-use crate::packets::input::{
+use deku::{DekuContainerRead, DekuContainerWrite};
+use tokio::time::{self, Instant, Interval};
+use webrtc::data_channel::data_channel_message::DataChannelMessage;
+
+use super::base::{DataChannelMsg, GssvChannel, GssvChannelSend};
+use crate::{error::GsError, packets::input::{
     ClientMetadataReport, GamepadData, GamepadReport, InputMetadataEntry, InputPacket,
     MetadataReport,
-};
+}};
 
 pub struct InputChannel {
+    conn: Arc<webrtc::peer_connection::RTCPeerConnection>,
+    inner: Arc<webrtc::data_channel::RTCDataChannel>,
     time_origin: Instant,
     input_sequence_num: u32,
     metadata_queue: Vec<InputMetadataEntry>,
@@ -17,49 +22,83 @@ pub struct InputChannel {
 }
 
 impl GssvChannel for InputChannel {
+    fn id() -> i32 {
+        3
+    }
+
+    fn protocol() -> &'static str {
+        "1.0"
+    }
+
+    fn is_ordered() -> Option<bool> {
+        Some(true)
+    }
+
     fn name() -> &'static str {
-        "Input"
+        "input"
     }
 
-    fn on_open(&self) {
-        todo!()
+    fn new(peer_connection: Arc<webrtc::peer_connection::RTCPeerConnection>, inner: Arc<webrtc::data_channel::RTCDataChannel>) -> Self {
+        Self {
+            conn: peer_connection,
+            inner: inner,
+            time_origin: Instant::now(),
+            input_sequence_num: 0,
+            metadata_queue: vec![],
+            input_frames: vec![],
+            input_interval: time::interval(tokio::time::Duration::from_millis(100)),
+            rumble_enabled: false
+        }
     }
 
-    fn on_close(&self) {
-        todo!()
+    fn conn(&self) -> Arc<webrtc::peer_connection::RTCPeerConnection> {
+        self.conn.clone()
     }
 
-    fn start(&mut self) {
+    fn datachannel(&self) -> Arc<webrtc::data_channel::RTCDataChannel> {
+        self.inner.clone()
+    }
+
+    async fn on_open(self: Arc<Self>) {
+        log::warn!("TODO: Implement on_open for channel: '{}'", Self::name());
+    }
+
+    async fn on_close(self: Arc<Self>) {
+        log::warn!("TODO: Implement on_close for channel: '{}'", Self::name());
+    }
+
+    async fn start(&self) -> Result<(), GsError> {
         let packet = InputPacket::new(
-            self.next_sequence_num(),
+            //self.next_sequence_num(),
+            0, // TODO
             // Fill timestamp
             self.timestamp(),
             None,
             None,
             Some(ClientMetadataReport::default()),
+            None,
         );
-        self.send_message(&DataChannelMsg::Bytes(packet.to_bytes().unwrap()));
+        self.send_message(&DataChannelMsg::Bytes(packet.to_bytes().unwrap())).await
     }
 
-    fn on_message(&self, msg: &DataChannelMsg) -> Result<(), Box<dyn std::error::Error>> {
-        println!("on_message ({}): {:?}", Self::name(), msg);
+    async fn on_message(self: Arc<Self>, msg: DataChannelMessage) {
+        log::warn!("on_message (channel: {}): {:?}", Self::name(), msg);
 
-        match msg {
-            DataChannelMsg::Bytes(bytes) => {
-                let (_, input_packet) = InputPacket::from_bytes((bytes, 0))?;
-                println!("[{}] Received packet: {:?}", Self::name(), input_packet);
-                todo!("Handle input packet")
+        match msg.is_string {
+            false => {
+                let (_, input_packet) = InputPacket::from_bytes((&msg.data, 0)).unwrap();
+                log::warn!("[{}] Received packet: {:?}", Self::name(), input_packet);
+                // todo!("Handle input packet")
             }
-            val => Err(format!("[{}] Unhandled message type: {:?}", Self::name(), val).into()),
+            true => {
+                let decoded = String::from_utf8_lossy(&msg.data.to_vec()).to_string();
+                log::warn!("String message on InputChannel: {}", &decoded);
+            }
         }
     }
 
-    fn send_message(&self, msg: &DataChannelMsg) {
-        todo!()
-    }
-
-    fn send_event(&self, event: &GssvChannelEvent) {
-        todo!()
+    async fn on_error(self: Arc<Self>, error: webrtc::Error) {
+        log::error!("Datachannel error, channel: {}, error: {error}", Self::name())
     }
 }
 
@@ -113,6 +152,7 @@ impl InputChannel {
             self.timestamp(),
             metadata_report,
             gamepad_report,
+            None,
             None,
         )
     }

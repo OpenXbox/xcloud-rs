@@ -1,50 +1,94 @@
-use super::base::{DataChannelMsg, GssvChannel, GssvChannelEvent};
-use serde_json::{json, Value};
+use std::sync::Arc;
 
-pub struct MessageChannel;
+use crate::error::GsError;
+
+use super::base::{DataChannelMsg, GssvChannel, GssvChannelSend};
+use serde_json::{json, Value};
+use tokio::sync::Mutex;
+use webrtc::data_channel::data_channel_message::DataChannelMessage;
+
+pub struct MessageChannel {
+    conn: Arc<webrtc::peer_connection::RTCPeerConnection>,
+    inner: Arc<webrtc::data_channel::RTCDataChannel>,
+    handshake_ack_tx: tokio::sync::mpsc::UnboundedSender<()>,
+    pub handshake_ack_rx: Arc<Mutex<tokio::sync::mpsc::UnboundedReceiver<()>>>,
+}
 
 impl GssvChannel for MessageChannel {
-    fn name() -> &'static str {
-        "Message"
+    fn id() -> i32 {
+        5
     }
 
-    fn on_open(&self) {
+    fn protocol() -> &'static str {
+        "messageV1"
+    }
+
+    fn is_ordered() -> Option<bool> {
+        None
+    }
+
+    fn name() -> &'static str {
+        "message"
+    }
+
+    fn new(peer_connection: Arc<webrtc::peer_connection::RTCPeerConnection>, inner: Arc<webrtc::data_channel::RTCDataChannel>) -> Self {
+        let (handshake_ack_tx, handshake_ack_rx) = tokio::sync::mpsc::unbounded_channel();
+        Self {
+            conn: peer_connection,
+            inner: inner,
+            handshake_ack_tx,
+            handshake_ack_rx: Arc::new(Mutex::new(handshake_ack_rx)),
+        }
+    }
+
+    fn conn(&self) -> Arc<webrtc::peer_connection::RTCPeerConnection> {
+        self.conn.clone()
+    }
+
+    fn datachannel(&self) -> Arc<webrtc::data_channel::RTCDataChannel> {
+        self.inner.clone()
+    }
+
+    async fn on_open(self: Arc<Self>) {
         let handshake = json!({
             "type":"Handshake",
             "version":"messageV1",
             "id":"0ab125e2-6eee-4687-a2f4-5cfb347f0643",
             "cv":"",
         });
-        self.send_message(&handshake.into())
+        self.send_message(&handshake.into()).await.unwrap();
     }
 
-    fn on_close(&self) {
-        todo!()
+    async fn on_close(self: Arc<Self>) {
+        log::warn!("TODO: Implement on_close for channel: '{}'", Self::name());
     }
 
-    fn start(&mut self) {
+    async fn start(&self) -> Result<(), GsError> {
         let auth_request = json!({
             "message":"authorizationRequest",
             "accessKey":"4BDB3609-C1F1-4195-9B37-FEFF45DA8B8E",
         });
-        self.send_message(&auth_request.into());
+        self.send_message(&auth_request.into()).await?;
 
         let gamepad_request = json!({
             "message": "gamepadChanged",
             "gamepadIndex": 0,
             "wasAdded": true,
         });
-        self.send_message(&gamepad_request.into())
+        self.send_message(&gamepad_request.into()).await
     }
 
-    fn on_message(&self, msg: &DataChannelMsg) -> Result<(), Box<dyn std::error::Error>> {
-        println!("on_message ({}): {:?}", Self::name(), msg);
+    async fn on_message(self: Arc<Self>, msg: DataChannelMessage) {
+        log::warn!("on_message (channel: {}): {:?}", Self::name(), msg);
 
-        let json_msg: Value = msg.try_into()?;
+        let json_msg: Value = serde_json::from_slice(&msg.data).unwrap();
         let msg_type = json_msg.get("type").unwrap().as_str().unwrap();
         match msg_type {
             "HandshakeAck" => {
                 // Handshake has been acked.
+                if let Err(err) = self.handshake_ack_tx.send(()) {
+                    log::error!("Failed to submit handshake ack signal! error: {err}");
+                }
 
                 //self.getClient().getChannelProcessor("control").start()
                 //self.getClient().getChannelProcessor("input").start()
@@ -66,32 +110,32 @@ impl GssvChannel for MessageChannel {
                         // -41 = unknown
                         // Possible options: Keyboard, PurchaseModal
                     }),
-                )?;
-                self.send_message(&ui_config);
+                ).unwrap();
+                self.send_message(&ui_config).await.unwrap();
 
                 let client_config = Self::generate_message(
                     "/streaming/properties/clientappinstallidchanged",
                     &json!({ "clientAppInstallId": "4b8f472d-2c82-40e8-895d-bcd6a6ec7e9b" }),
-                )?;
-                self.send_message(&client_config);
+                ).unwrap();
+                self.send_message(&client_config).await.unwrap();
 
                 let orientation_config = Self::generate_message(
                     "/streaming/characteristics/orientationchanged",
                     &json!({ "orientation": 0 }),
-                )?;
-                self.send_message(&orientation_config);
+                ).unwrap();
+                self.send_message(&orientation_config).await.unwrap();
 
                 let touch_config = Self::generate_message(
                     "/streaming/characteristics/touchinputenabledchanged",
                     &json!({ "touchInputEnabled": /* self.getClient()._config.ui_touchenabled || */ false }),
-                )?;
-                self.send_message(&touch_config);
+                ).unwrap();
+                self.send_message(&touch_config).await.unwrap();
 
                 let device_config = Self::generate_message(
                     "/streaming/characteristics/clientdevicecapabilities",
                     &json!({}),
-                )?;
-                self.send_message(&device_config);
+                ).unwrap();
+                self.send_message(&device_config).await.unwrap();
 
                 let dimensions_config = Self::generate_message(
                     "/streaming/characteristics/dimensionschanged",
@@ -106,23 +150,20 @@ impl GssvChannel for MessageChannel {
                         "safeAreaBottom": 1080,
                         "supportsCustomResolution":true,
                     }),
-                )?;
-                self.send_message(&dimensions_config);
+                ).unwrap();
+                self.send_message(&dimensions_config).await.unwrap();
+            }
+            "Message" => {
+                log::warn!("Incoming Message: {:?}", json_msg);
             }
             val => {
-                return Err(format!("[{}] Unhandled message type: {}", Self::name(), val).into());
+                log::error!("[Channel: {}] Unhandled message type: {}", Self::name(), val);
             }
-        };
-
-        Ok(())
+        }
     }
 
-    fn send_message(&self, msg: &DataChannelMsg) {
-        todo!()
-    }
-
-    fn send_event(&self, event: &GssvChannelEvent) {
-        todo!()
+    async fn on_error(self: Arc<Self>, error: webrtc::Error) {
+        log::error!("Datachannel error, channel: {}, error: {error}", Self::name())
     }
 }
 
@@ -130,10 +171,10 @@ impl MessageChannel {
     fn generate_message(
         path: &str,
         data: &Value,
-    ) -> Result<DataChannelMsg, Box<dyn std::error::Error>> {
+    ) -> Result<DataChannelMsg, GsError> {
         Ok(json!({
             "type": "Message",
-            "content": serde_json::to_string(data)?,
+            "content": serde_json::to_string(data).unwrap(),
             "id": "41f93d5a-900f-4d33-b7a1-2d4ca6747072",
             "target": path,
             "cv": "",
@@ -141,15 +182,14 @@ impl MessageChannel {
         .into())
     }
 
-    fn send_transaction(&self, id: &str, data: &Value) -> Result<(), Box<dyn std::error::Error>> {
+    async fn send_transaction(&self, id: &str, data: &Value) -> Result<(), GsError> {
         let transaction = json!({
             "type": "TransactionComplete",
-            "content": serde_json::to_string(data)?,
+            "content": serde_json::to_string(data).unwrap(),
             "id": id,
             "cv": "",
         });
 
-        self.send_message(&transaction.into());
-        Ok(())
+        self.send_message(&transaction.into()).await
     }
 }

@@ -1,50 +1,38 @@
 use anyhow::{Result, anyhow};
 use log;
 use simple_logger;
-use ffmpeg_next::{codec, filter, format, frame, media};
-use webrtc::rtp::codecs::h264::H264Packet;
-use webrtc::rtp::packetizer::Depacketizer;
-use tokio::io::{AsyncWrite,AsyncWriteExt};
+use ffmpeg_next::{codec, frame};
 
-use std::alloc::{self, alloc};
-use std::any::Any;
 use std::ptr;
-use std::io::Write;
 use std::mem::zeroed;
 use std::ffi::CStr;
-use std::fs::File;
-use bytes::Bytes;
 use std::sync::Arc;
-use std::collections::HashMap;
 use tokio::sync::{Mutex, Notify};
 use tokio::time::Duration;
-use webrtc::api::interceptor_registry::register_default_interceptors;
-use webrtc::api::media_engine::{MediaEngine, MIME_TYPE_H264, MIME_TYPE_OPUS};
-use webrtc::api::APIBuilder;
-use webrtc::data_channel::RTCDataChannel;
-use webrtc::data_channel::data_channel_init::RTCDataChannelInit;
-use webrtc::data_channel::data_channel_message::DataChannelMessage;
-use webrtc::ice_transport::ice_candidate::{RTCIceCandidate, RTCIceCandidateInit};
-use webrtc::ice_transport::ice_server::RTCIceServer;
-use webrtc::interceptor::registry::Registry;
-use webrtc::media::io::h264_writer::H264Writer;
-use webrtc::media::io::ogg_writer::OggWriter;
-use webrtc::media::io::h264_reader::H264Reader;
-use webrtc::peer_connection::configuration::RTCConfiguration;
-use webrtc::peer_connection::peer_connection_state::RTCPeerConnectionState;
-use webrtc::peer_connection::sdp::session_description::RTCSessionDescription;
-use webrtc::peer_connection::RTCPeerConnection;
-use webrtc::rtcp::payload_feedbacks::picture_loss_indication::PictureLossIndication;
-use webrtc::rtp_transceiver::rtp_codec::{
+use gamestreaming_webrtc::webrtc::rtp::codecs::h264::H264Packet;
+use gamestreaming_webrtc::webrtc::rtp::packetizer::Depacketizer;
+use gamestreaming_webrtc::webrtc::api::interceptor_registry::register_default_interceptors;
+use gamestreaming_webrtc::webrtc::api::media_engine::{MediaEngine, MIME_TYPE_H264, MIME_TYPE_OPUS};
+use gamestreaming_webrtc::webrtc::api::APIBuilder;
+use gamestreaming_webrtc::webrtc::ice_transport::ice_candidate::{RTCIceCandidate, RTCIceCandidateInit};
+use gamestreaming_webrtc::webrtc::ice_transport::ice_server::RTCIceServer;
+use gamestreaming_webrtc::webrtc::interceptor::registry::Registry;
+use gamestreaming_webrtc::webrtc::peer_connection::configuration::RTCConfiguration;
+use gamestreaming_webrtc::webrtc::peer_connection::peer_connection_state::RTCPeerConnectionState;
+use gamestreaming_webrtc::webrtc::peer_connection::sdp::session_description::RTCSessionDescription;
+use gamestreaming_webrtc::webrtc::peer_connection::RTCPeerConnection;
+use gamestreaming_webrtc::webrtc::rtcp::payload_feedbacks::picture_loss_indication::PictureLossIndication;
+use gamestreaming_webrtc::webrtc::rtp_transceiver::rtp_codec::{
     RTCRtpCodecCapability, RTCRtpCodecParameters, RTPCodecType,
 };
-use webrtc::rtp_transceiver::rtp_transceiver_direction::RTCRtpTransceiverDirection;
-use webrtc::rtp_transceiver::RTCRtpTransceiverInit;
-use webrtc::track::track_remote::TrackRemote;
+use gamestreaming_webrtc::webrtc::rtp_transceiver::rtp_transceiver_direction::RTCRtpTransceiverDirection;
+use gamestreaming_webrtc::webrtc::rtp_transceiver::{RTCPFeedback, RTCRtpTransceiverInit};
+use gamestreaming_webrtc::webrtc::track::track_remote::TrackRemote;
 
-use gamestreaming_webrtc::api::IceCandidate;
+use gamestreaming_webrtc::api::{IceCandidate, SessionResponse};
 use gamestreaming_webrtc::{GamestreamingClient, Platform};
-use gamestreaming_webrtc::auth::authenticate;
+use gamestreaming_webrtc::auth::{authenticate, GamestreamingAuthContext};
+use gamestreaming_webrtc::channels::{GssvChannel, GssvChannelInit, ChatChannel, ControlChannel, InputChannel, MessageChannel};
 
 use sdl3_sys::everything::*;
 
@@ -52,13 +40,6 @@ use sdl3_sys::everything::*;
 extern crate lazy_static;
 
 const TOKENS_FILEPATH: &str = "tokens.json";
-
-#[derive(Debug, Default, Clone, Copy, Eq, PartialEq)]
-struct DataChannelParams {
-    id: i32,
-    protocol: &'static str,
-    is_ordered: Option<bool>,
-}
 
 
 lazy_static! {
@@ -70,8 +51,8 @@ lazy_static! {
 }
 
 
-const WINDOW_WIDTH: i32 = 640;
-const WINDOW_HEIGHT: i32 = 480;
+const WINDOW_WIDTH: i32 = 1920;
+const WINDOW_HEIGHT: i32 = 1080;
 
 const NALU_TTYPE_STAP_A: u32 = 24;
 const NALU_TTYPE_SPS: u32 = 7;
@@ -88,15 +69,7 @@ fn is_key_frame(data: &[u8]) -> bool {
     }
 }
 
-async fn save_to_disk(
-    track: Arc<TrackRemote>,
-    notify: Arc<Notify>,
-) -> Result<()> {
-    log::info!("Exited loop, cleaning up SDL");
-    Ok(())
-}
-
-async fn create_peer_connection() -> Result<RTCPeerConnection, webrtc::Error> {
+async fn create_peer_connection() -> Result<RTCPeerConnection, gamestreaming_webrtc::webrtc::Error> {
     // Prepare the configuration
     let config = RTCConfiguration {
         ice_servers: vec![RTCIceServer {
@@ -109,35 +82,6 @@ async fn create_peer_connection() -> Result<RTCPeerConnection, webrtc::Error> {
     // Create a MediaEngine object to configure the supported codec
     let mut m = MediaEngine::default();
     m.register_default_codecs()?;
-    m.register_codec(
-        RTCRtpCodecParameters {
-            capability: RTCRtpCodecCapability {
-                mime_type: MIME_TYPE_H264.to_owned(),
-                clock_rate: 90000,
-                channels: 0,
-                sdp_fmtp_line: "".to_owned(),
-                rtcp_feedback: vec![],
-            },
-            payload_type: 102,
-            ..Default::default()
-        },
-        RTPCodecType::Video,
-    )?;
-
-    m.register_codec(
-        RTCRtpCodecParameters {
-            capability: RTCRtpCodecCapability {
-                mime_type: MIME_TYPE_OPUS.to_owned(),
-                clock_rate: 48000,
-                channels: 2,
-                sdp_fmtp_line: "".to_owned(),
-                rtcp_feedback: vec![],
-            },
-            payload_type: 111,
-            ..Default::default()
-        },
-        RTPCodecType::Audio,
-    )?;
 
     let mut registry = Registry::new();
 
@@ -154,57 +98,62 @@ async fn create_peer_connection() -> Result<RTCPeerConnection, webrtc::Error> {
     api.new_peer_connection(config).await
 }
 
+async fn start_session(ts: GamestreamingAuthContext, platform: Platform) -> Result<(GamestreamingClient, SessionResponse)> {
+    let xcloud = GamestreamingClient::new(
+        platform.clone(),
+        &ts.gssv_token.token,
+        &ts.xcloud_transfer_token.lpt,
+    )
+    .await?;
+
+    let session = match platform {
+        Platform::Cloud => {
+            match xcloud.lookup_games().await?.first() {
+                Some(title) => {
+                    log::info!("Starting title: {:?}", title);
+                    let session = xcloud.start_stream_xcloud(&title.title_id).await?;
+                    log::info!("Session started successfully: {:?}", session);
+        
+                    session
+                }
+                None => {
+                    return Err(anyhow!("No titles found"));
+                }
+            }
+        },
+        Platform::Home => {
+            match xcloud.lookup_consoles().await {
+                Ok(consoles) => {
+                    let c = consoles.results.first().unwrap();
+                    xcloud.start_stream_xhome(&c.server_id).await?
+                },
+                Err(err) => {
+                    return Err(anyhow!("No consoles received from API, error: {err}"));
+                }
+            }
+        },
+    };
+
+    Ok((xcloud, session))
+}
+
 async fn start_remote_connection(
     audio_tx: tokio::sync::mpsc::UnboundedSender<Arc<TrackRemote>>,
     video_tx: tokio::sync::mpsc::UnboundedSender<Arc<TrackRemote>>
 ) -> Result<()> {
     let ts = authenticate(TOKENS_FILEPATH)
         .await
-        .map_err(|e|anyhow!("Authentication failed"))?;
+        .map_err(|e|anyhow!("Authentication failed, error: {e:?}"))?;
 
-    let xcloud = GamestreamingClient::new(
-        Platform::Home,
-        &ts.gssv_token.token,
-        &ts.xcloud_transfer_token.lpt,
-    )
-    .await?;
+    let platform = Platform::Cloud;
+    //let platform = Platform::Home;
 
-    let session = match xcloud.lookup_consoles().await {
-        Ok(consoles) => {
-            let c = consoles.results.first().unwrap();
-            xcloud.start_stream_xhome(&c.server_id).await?
-        },
-        Err(err) => {
-            return Err(anyhow!("No consoles received from API"));
-        }
-    };
-
-
-    /*
-    let xcloud = GamestreamingClient::new(
-        Platform::Cloud,
-        &ts.gssv_token.token,
-        &ts.xcloud_transfer_token.lpt,
-    )
-    .await?;
-    let session = match xcloud.lookup_games().await?.first() {
-        Some(title) => {
-            log::info!("Starting title: {:?}", title);
-            let session = xcloud.start_stream_xcloud(&title.title_id).await?;
-            log::info!("Session started successfully: {:?}", session);
-
-            session
-        }
-        None => {
-            return Err("No titles received from API".into());
-        }
-    };
-    */
+    let (xcloud, session) = start_session(ts, platform).await?;
 
     // WebRTC part
 
     // Create a new RTCPeerConnection
-    let peer_connection = Arc::new(create_peer_connection().await?);
+    let peer_connection: Arc<RTCPeerConnection> = Arc::new(create_peer_connection().await?);
 
     // When an ICE candidate is available send to the other Pion instance
     // the other Pion instance will add this candidate by calling AddICECandidate
@@ -237,30 +186,33 @@ async fn start_remote_connection(
             })
         }));
 
-    let channel_params: HashMap<String, DataChannelParams> = [
-        ("input".into(), DataChannelParams { id: 3, protocol: "1.0".into(), is_ordered: Some(true) }),
-        ("control".into(), DataChannelParams { id: 4, protocol: "controlV1".into(), is_ordered: None }),
-        ("message".into(), DataChannelParams { id: 5, protocol: "messageV1".into(), is_ordered: None }),
-        ("chat".into(), DataChannelParams { id: 6, protocol: "chatV1".into(), is_ordered: None }),
+    peer_connection.on_data_channel(Box::new(move |c| {
+        log::warn!("On data channel: {:?}", c.label());
+        Box::pin(async {})
+    }));
 
-    ].into();
+    peer_connection.on_ice_connection_state_change(Box::new(move |c| {
+        log::warn!("On ice connection state change: {:?}", c);
+        Box::pin(async {})
+    }));
+    peer_connection.on_ice_gathering_state_change(Box::new(move |c| {
+        log::warn!("On ice gathering state change: {:?}", c);
+        Box::pin(async {})
+    }));
+    peer_connection.on_negotiation_needed(Box::new(move || {
+        log::warn!("On negotiation needed");
+        Box::pin(async {})
+    }));
+    peer_connection.on_signaling_state_change(Box::new(move |c| {
+        log::warn!("On signaling state change: {:?}", c);
+        Box::pin(async {})
+    }));
 
-    let mut channel_defs: HashMap<String, Arc<RTCDataChannel>> = HashMap::new();
-    // Create channels and store in HashMap
-    for (name, params) in channel_params.into_iter() {
-        let chan = peer_connection
-        .create_data_channel(
-            &name,
-            Some(RTCDataChannelInit {
-                ordered: params.is_ordered,
-                protocol: Some(params.protocol.to_owned()),
-                ..Default::default()
-            }),
-        )
-        .await?;
-
-        channel_defs.insert(name, chan);
-    }
+    // Create channels and assign on-open and on-message callbacks
+    let channel_input = InputChannel::init(peer_connection.clone()).await?;
+    let channel_control = ControlChannel::init(peer_connection.clone()).await?;
+    let channel_message = MessageChannel::init(peer_connection.clone()).await?;
+    let _channel_chat = ChatChannel::init(peer_connection.clone()).await?;
 
     // Allow us to receive 1 audio track, and 1 video track
     peer_connection
@@ -282,7 +234,7 @@ async fn start_remote_connection(
         )
         .await?;
 
-    let (done_tx, mut done_rx) = tokio::sync::mpsc::channel::<()>(1);
+    let (done_tx, _done_rx) = tokio::sync::mpsc::channel::<()>(1);
 
     // Set the handler for Peer connection state
     // This will notify you when the peer has connected/disconnected
@@ -301,62 +253,7 @@ async fn start_remote_connection(
             Box::pin(async {})
         }));
 
-    // Register channel opening / on message handling
-
-    for (name, channel) in channel_defs.into_iter() {
-        let d1 = Arc::clone(&channel);
-        channel.on_open(Box::new(move || {
-            log::info!("Data channel '{}'-'{}' open", d1.label(), d1.id());
-
-            Box::pin(async move {
-                let result = Result::<usize, webrtc::Error>::Ok(0);
-                while result.is_ok() {
-                    let timeout = tokio::time::sleep(Duration::from_secs(5));
-                    tokio::pin!(timeout);
-
-                    tokio::select! {
-                        _ = timeout.as_mut() =>{
-                            /*
-                            From example code - Sending random strings over datachannel
-                            let message = math_rand_alpha(15);
-                            log::info!("Sending '{}'", message);
-                            result = d2.send_text(message).await.map_err(Into::into);
-                            */
-                        }
-                    };
-                }
-            })
-        }));
-
-        let message_label = name.clone();
-        channel
-            .on_message(Box::new(move |msg: DataChannelMessage| {
-                let msg_str = match String::from_utf8(msg.data.to_vec()) {
-                    Ok(str) => str,
-                    _ => {
-                        format!("Binary={:?}", msg.data)
-                    }
-                };
-                log::info!(
-                    "Message from DataChannel '{}': '{}'",
-                    message_label, msg_str
-                );
-                Box::pin(async {})
-            }));
-    }
-
-    /*
-    let (video_file, audio_file) = ("video.mkv", "audio.ogg");
-
-    let h264_writer: Arc<Mutex<dyn webrtc::media::io::Writer + Send + Sync>> =
-        Arc::new(Mutex::new(H264Writer::new(File::create(video_file)?)));
-    let ogg_writer: Arc<Mutex<dyn webrtc::media::io::Writer + Send + Sync>> = Arc::new(Mutex::new(
-        OggWriter::new(File::create(audio_file)?, 48000, 2)?,
-    ));
-    */
-
-    let notify_tx = Arc::new(Notify::new());
-    let notify_rx = notify_tx.clone();
+    let _notify_tx = Arc::new(Notify::new());
 
     let pc = Arc::downgrade(&peer_connection);
     peer_connection.on_track(Box::new(move |track, _receiver, _transceiver| {
@@ -389,10 +286,10 @@ async fn start_remote_connection(
 
         match track.kind() {
             RTPCodecType::Video => {
-                video_sender.send(track);
+                let _ = video_sender.send(track);
             }
             RTPCodecType::Audio => {
-                audio_sender.send(track);
+                let _ = audio_sender.send(track);
             }
             _ => {}
         }
@@ -466,13 +363,34 @@ async fn start_remote_connection(
         peer_connection.add_ice_candidate(c).await?;
     }
 
+    log::warn!("Waiting for handshake ack on message channel");
+    let mut handshake_rx = channel_message.handshake_ack_rx.lock().await;
+    while handshake_rx.recv().await.is_none() {
+        tokio::time::sleep(Duration::from_secs(1)).await;
+    }
+    drop(handshake_rx);
+
+    log::warn!("[+] Handshake ack received, starting channels...");
+    channel_input.start().await.unwrap();
+    channel_control.start().await.unwrap();
+    log::warn!("[+] channels started, looping keepalive msg now...");
+
+    loop {
+        if let Err(e) = xcloud.keepalive(&session).await {
+            log::error!("Keepalive failed, error: {e:?}");
+        }
+        tokio::time::sleep(Duration::from_secs(5)).await;
+    }
+
     Ok(())
 }
 
 #[tokio::main]
 async fn main() -> Result<()> {
 
-    simple_logger::init_with_level(log::Level::Info)?;
+    let do_decoding = true;
+
+    simple_logger::init_with_level(log::Level::Debug)?;
 
     // XCloud part
     let mut window = unsafe { zeroed() };
@@ -487,7 +405,7 @@ async fn main() -> Result<()> {
             freq: 48000
         };
 
-        if SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO) == false {
+        if SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_GAMEPAD) == false {
             log::error!("SDL_Init Error: {:?}", CStr::from_ptr(SDL_GetError()));
             return Err(anyhow!("SDL Init failed"));
         }
@@ -495,8 +413,8 @@ async fn main() -> Result<()> {
         // Create a window
         window = SDL_CreateWindow(
             c"SDL3 Video Playback".as_ptr(),
-            1920,
-            1080,
+            WINDOW_WIDTH,
+            WINDOW_HEIGHT,
             SDL_WindowFlags::default()
         );
         
@@ -514,7 +432,7 @@ async fn main() -> Result<()> {
             return Err(anyhow!("SDL_CreateRenderer Error"));
         }
 
-        texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_IYUV, SDL_TEXTUREACCESS_STREAMING, 1920, 1080);
+        texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_IYUV, SDL_TEXTUREACCESS_STREAMING, WINDOW_WIDTH, WINDOW_HEIGHT);
         if texture.is_null() {
             log::error!("SDL_CreateTexture Error: {:?}", CStr::from_ptr(SDL_GetError()));
             SDL_Quit();
@@ -529,11 +447,11 @@ async fn main() -> Result<()> {
         }
     }
 
-    let (mut video_tx, mut video_rx) = tokio::sync::mpsc::unbounded_channel();
-    let (mut audio_tx, mut audio_rx) = tokio::sync::mpsc::unbounded_channel();
+    let (video_tx, mut video_rx) = tokio::sync::mpsc::unbounded_channel();
+    let (audio_tx, mut audio_rx) = tokio::sync::mpsc::unbounded_channel();
 
     log::debug!("Spawning remote connection...");
-    let handle = tokio::spawn(start_remote_connection(audio_tx, video_tx));
+    let _handle = tokio::spawn(start_remote_connection(audio_tx, video_tx));
 
 
     // Create a channel to signal the main loop to exit
@@ -570,11 +488,10 @@ async fn main() -> Result<()> {
         'running: loop {
             while SDL_PollEvent(&mut event as *mut _) {
                 match event.r#type {
-                    256 => {
-                        log::debug!("Key: {}", event.key.key);
+                    0x100 => {
                         let _ = exit_tx.send(()).await;
                     },
-                    evt_type => {
+                    _evt_type => {
                         // log::info!("Unhandled evt: {}", evt_type.0);
                     }
                 }
@@ -594,27 +511,29 @@ async fn main() -> Result<()> {
             }
 
             if let Some(ref track) = audio_track {
-                if let Ok((rtp_packet, b)) = track.read_rtp().await {
-                    if !rtp_packet.payload.is_empty() {
-                        let payload = rtp_packet.payload;
-                        if !got_audio {
-                            got_audio = true;
-                            log::info!("Got first audio frame");
-                            if !SDL_ResumeAudioStreamDevice(audiostream) {
-                                log::error!("Failed to unpause audio stream");
+                if let Ok((rtp_packet, _b)) = track.read_rtp().await {
+                    if do_decoding {
+                        if !rtp_packet.payload.is_empty() {
+                            let payload = rtp_packet.payload;
+                            if !got_audio {
+                                got_audio = true;
+                                log::info!("Got first audio frame");
+                                if !SDL_ResumeAudioStreamDevice(audiostream) {
+                                    log::error!("Failed to unpause audio stream");
+                                }
                             }
-                        }
-                        let mut pkt = ffmpeg_next::Packet::copy(&payload);
-        
-                        if audio_decoder.send_packet(&mut pkt).is_ok() {
-                            let mut frame = frame::Audio::empty();
-                            while audio_decoder.receive_frame(&mut frame).is_ok() {
-                                if !SDL_PutAudioStreamData(
-                                    audiostream,
-                                    frame.data(0).as_ptr() as *mut _,
-                                    frame.data(0).len() as i32
-                                ) {
-                                    log::error!("Failed to put data into audio stream");
+                            let mut pkt = ffmpeg_next::Packet::copy(&payload);
+            
+                            if audio_decoder.send_packet(&mut pkt).is_ok() {
+                                let mut frame = frame::Audio::empty();
+                                while audio_decoder.receive_frame(&mut frame).is_ok() {
+                                    if !SDL_PutAudioStreamData(
+                                        audiostream,
+                                        frame.data(0).as_ptr() as *mut _,
+                                        frame.data(0).len() as i32
+                                    ) {
+                                        log::error!("Failed to put data into audio stream");
+                                    }
                                 }
                             }
                         }
@@ -623,49 +542,51 @@ async fn main() -> Result<()> {
             }
 
             if let Some(ref track) = video_track {
-                if let Ok((rtp_packet, b)) = track.read_rtp().await {
-                    if !rtp_packet.payload.is_empty() {
-                        let payload = rtp_packet.payload;
-                        if !got_video {
-                            got_video = true;
-                            log::info!("Got first video frame");
-                        }
-        
-                        if !has_keyframe {
-                            has_keyframe = is_key_frame(&payload);
-                        }
-        
-                        if has_keyframe {
-                            if let Ok(data) = h264pkt.depacketize(&payload) {
-                                let mut pkt = ffmpeg_next::Packet::copy(&data);
-        
-                                if video_decoder.send_packet(&mut pkt).is_ok() {
-                                    let mut frame = frame::Video::empty();
-                                    while video_decoder.receive_frame(&mut frame).is_ok() {
-                                        SDL_UpdateYUVTexture(
-                                            texture,
-                                            ptr::null(),
-                                            frame.data(0).as_ptr(),
-                                            frame.plane_width(0) as i32,
-                                            frame.data(1).as_ptr(),
-                                            frame.plane_width(1) as i32,
-                                            frame.data(2).as_ptr(),
-                                            frame.plane_width(2) as i32
-                                        );
-                    
-                                        SDL_RenderTexture(renderer, texture, ptr::null(), ptr::null());
-                    
-                                        // Present the back buffer
-                                        SDL_RenderPresent(renderer);
+                if let Ok((rtp_packet, _b)) = track.read_rtp().await {
+                    if do_decoding {
+                        if !rtp_packet.payload.is_empty() {
+                            let payload = rtp_packet.payload;
+                            if !got_video {
+                                got_video = true;
+                                log::info!("Got first video frame");
+                            }
+            
+                            if !has_keyframe {
+                                has_keyframe = is_key_frame(&payload);
+                            }
+            
+                            if has_keyframe {
+                                if let Ok(data) = h264pkt.depacketize(&payload) {
+                                    let mut pkt = ffmpeg_next::Packet::copy(&data);
+            
+                                    if video_decoder.send_packet(&mut pkt).is_ok() {
+                                        let mut frame = frame::Video::empty();
+                                        while video_decoder.receive_frame(&mut frame).is_ok() {
+                                            SDL_UpdateYUVTexture(
+                                                texture,
+                                                ptr::null(),
+                                                frame.data(0).as_ptr(),
+                                                frame.plane_width(0) as i32,
+                                                frame.data(1).as_ptr(),
+                                                frame.plane_width(1) as i32,
+                                                frame.data(2).as_ptr(),
+                                                frame.plane_width(2) as i32
+                                            );
+                        
+                                            SDL_RenderTexture(renderer, texture, ptr::null(), ptr::null());
+                        
+                                            // Present the back buffer
+                                            SDL_RenderPresent(renderer);
+                                        }
                                     }
                                 }
-                            }
-                        }    
+                            }    
+                        }
                     }
                 }
             }
 
-            if let Ok(exit_signal) = exit_rx.try_recv() {
+            if let Ok(_exit_signal) = exit_rx.try_recv() {
                 log::info!("Received exit signal, exiting loop");
                 break 'running;
             }
