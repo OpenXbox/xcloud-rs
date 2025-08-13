@@ -19,7 +19,7 @@ cargo doc
 CLI / Manually copying redirect URI
 
 ```text
-cargo run --examples auth_gssv
+cargo run --example auth-gssv
 ```
 
 ### Test Gssv Api
@@ -37,5 +37,5 @@ Note: Requires tokens (see above)
 Writes audio/video tracks to file
 
 ```text
-cargo run --bin client_sdl2
+cargo run --bin client_sdl3
 ```
