@@ -1,18 +1,19 @@
-use anyhow::{Result, anyhow};
-use log;
-use simple_logger;
-use ffmpeg_next::{codec, frame};
-
-use std::ptr;
-use std::mem::zeroed;
-use std::ffi::CStr;
 use std::sync::Arc;
+use anyhow::{Result, anyhow};
+use sdl3::pixels::PixelFormat;
 use tokio::sync::{Mutex, Notify};
 use tokio::time::Duration;
+use log;
+use simple_logger;
+use sdl3::audio::{AudioFormat, AudioSpec};
+use sdl3::event::Event;
+use sdl3::sys::pixels::SDL_PixelFormat;
+use ffmpeg_next::{codec, frame};
+
 use gamestreaming_webrtc::webrtc::rtp::codecs::h264::H264Packet;
 use gamestreaming_webrtc::webrtc::rtp::packetizer::Depacketizer;
 use gamestreaming_webrtc::webrtc::api::interceptor_registry::register_default_interceptors;
-use gamestreaming_webrtc::webrtc::api::media_engine::{MediaEngine, MIME_TYPE_H264, MIME_TYPE_OPUS};
+use gamestreaming_webrtc::webrtc::api::media_engine::MediaEngine;
 use gamestreaming_webrtc::webrtc::api::APIBuilder;
 use gamestreaming_webrtc::webrtc::ice_transport::ice_candidate::{RTCIceCandidate, RTCIceCandidateInit};
 use gamestreaming_webrtc::webrtc::ice_transport::ice_server::RTCIceServer;
@@ -22,19 +23,15 @@ use gamestreaming_webrtc::webrtc::peer_connection::peer_connection_state::RTCPee
 use gamestreaming_webrtc::webrtc::peer_connection::sdp::session_description::RTCSessionDescription;
 use gamestreaming_webrtc::webrtc::peer_connection::RTCPeerConnection;
 use gamestreaming_webrtc::webrtc::rtcp::payload_feedbacks::picture_loss_indication::PictureLossIndication;
-use gamestreaming_webrtc::webrtc::rtp_transceiver::rtp_codec::{
-    RTCRtpCodecCapability, RTCRtpCodecParameters, RTPCodecType,
-};
+use gamestreaming_webrtc::webrtc::rtp_transceiver::rtp_codec::RTPCodecType;
 use gamestreaming_webrtc::webrtc::rtp_transceiver::rtp_transceiver_direction::RTCRtpTransceiverDirection;
-use gamestreaming_webrtc::webrtc::rtp_transceiver::{RTCPFeedback, RTCRtpTransceiverInit};
+use gamestreaming_webrtc::webrtc::rtp_transceiver::RTCRtpTransceiverInit;
 use gamestreaming_webrtc::webrtc::track::track_remote::TrackRemote;
 
 use gamestreaming_webrtc::api::{IceCandidate, SessionResponse};
 use gamestreaming_webrtc::{GamestreamingClient, Platform};
 use gamestreaming_webrtc::auth::{authenticate, GamestreamingAuthContext};
 use gamestreaming_webrtc::channels::{GssvChannel, GssvChannelInit, ChatChannel, ControlChannel, InputChannel, MessageChannel};
-
-use sdl3_sys::everything::*;
 
 #[macro_use]
 extern crate lazy_static;
@@ -51,8 +48,8 @@ lazy_static! {
 }
 
 
-const WINDOW_WIDTH: i32 = 1920;
-const WINDOW_HEIGHT: i32 = 1080;
+const WINDOW_WIDTH: u32 = 1920;
+const WINDOW_HEIGHT: u32 = 1080;
 
 const NALU_TTYPE_STAP_A: u32 = 24;
 const NALU_TTYPE_SPS: u32 = 7;
@@ -387,76 +384,34 @@ async fn start_remote_connection(
 
 #[tokio::main]
 async fn main() -> Result<()> {
-
-    let do_decoding = true;
-
     simple_logger::init_with_level(log::Level::Debug)?;
 
     // XCloud part
-    let mut window = unsafe { zeroed() };
-    let mut renderer = unsafe { zeroed() };
-    let mut texture = unsafe { zeroed() };
-    let mut audiostream = unsafe { zeroed() };
 
-    unsafe {
-        let audiospec = SDL_AudioSpec {
-            format: SDL_AUDIO_F32,
-            channels: 2,
-            freq: 48000
-        };
+    let sdl_context = sdl3::init()?;
+    let mut event_pump = sdl_context.event_pump()?;
+    let window = sdl_context.video()?
+        .window("Xbox Gamestreaming", WINDOW_WIDTH, WINDOW_HEIGHT)
+        .position_centered()
+        .build()?;
 
-        if SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_GAMEPAD) == false {
-            log::error!("SDL_Init Error: {:?}", CStr::from_ptr(SDL_GetError()));
-            return Err(anyhow!("SDL Init failed"));
-        }
+    let mut canvas = window.into_canvas();
+    let texture_creator = canvas.texture_creator();
 
-        // Create a window
-        window = SDL_CreateWindow(
-            c"SDL3 Video Playback".as_ptr(),
-            WINDOW_WIDTH,
-            WINDOW_HEIGHT,
-            SDL_WindowFlags::default()
-        );
-        
-        if window.is_null() {
-            log::error!("SDL_CreateWindow Error: {:?}", CStr::from_ptr(SDL_GetError()));
-            SDL_Quit();
-            return Err(anyhow!("SDL_CreateWindow Error"));
-        }
+    let mut texture = texture_creator.create_texture_target(unsafe { PixelFormat::from_ll(SDL_PixelFormat::IYUV) }, WINDOW_WIDTH, WINDOW_HEIGHT)?;
 
-        renderer = SDL_CreateRenderer(window, ptr::null());
+    let audiospec = AudioSpec::new(Some(48000), Some(2), Some(AudioFormat::F32LE));
+    let audiodevice = sdl_context.audio()?
+        .open_playback_device(&audiospec)?;
+    let audiostream = audiodevice.open_device_stream(None)?;
 
-        if renderer.is_null() {
-            log::error!("SDL_CreateRenderer Error: {:?}", CStr::from_ptr(SDL_GetError()));
-            SDL_Quit();
-            return Err(anyhow!("SDL_CreateRenderer Error"));
-        }
-
-        texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_IYUV, SDL_TEXTUREACCESS_STREAMING, WINDOW_WIDTH, WINDOW_HEIGHT);
-        if texture.is_null() {
-            log::error!("SDL_CreateTexture Error: {:?}", CStr::from_ptr(SDL_GetError()));
-            SDL_Quit();
-            return Err(anyhow!("SDL_CreateTexture Error"));
-        }
-
-        audiostream = SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &audiospec, None, ptr::null_mut());
-        if audiostream.is_null() {
-            log::error!("SDL_OpenAudioDeviceStream Error: {:?}", CStr::from_ptr(SDL_GetError()));
-            SDL_Quit();
-            return Err(anyhow!("SDL_OpenAudioDeviceStream Error"));
-        }
-    }
+    let _gamepad = sdl_context.gamepad()?;
 
     let (video_tx, mut video_rx) = tokio::sync::mpsc::unbounded_channel();
     let (audio_tx, mut audio_rx) = tokio::sync::mpsc::unbounded_channel();
 
     log::debug!("Spawning remote connection...");
     let _handle = tokio::spawn(start_remote_connection(audio_tx, video_tx));
-
-
-    // Create a channel to signal the main loop to exit
-    let (exit_tx, mut exit_rx) = tokio::sync::mpsc::channel::<()>(1);
-    log::info!("Press ctrl-c to stop");
 
     ffmpeg_next::init()?;
 
@@ -472,129 +427,137 @@ async fn main() -> Result<()> {
         .audio()
         .unwrap();
 
-    unsafe {
-        // Clear the screen
-        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
-        SDL_RenderClear(renderer);
+    // Clear the screen
+    canvas.clear();
 
-        let (mut got_audio, mut got_video) = (false, false);
+    // Create a channel to signal the main loop to exit
+    let (exit_tx, mut exit_rx) = tokio::sync::mpsc::unbounded_channel::<()>();
+    log::info!("Press ctrl-c to stop");
+    let mut audio_started = false;
+    let (decoded_video_frames_tx, mut decoded_video_frames_rx) = tokio::sync::mpsc::channel(100);
+    let (decoded_audio_frames_tx, mut decoded_audio_frames_rx) = tokio::sync::mpsc::channel(100);
+
+    let _audio_decoder = tokio::spawn(async move {
+        let mut audio_track = audio_rx.recv().await;
+
+        while audio_track.is_none() {
+            audio_track = audio_rx.recv().await;
+            tokio::time::sleep(Duration::from_secs(1)).await;
+        }
+
+        log::warn!("Got audio track!");
+
+        if let Some(track) = audio_track {
+            loop {
+                if let Ok((rtp_packet, _b)) = track.read_rtp().await {
+                    if rtp_packet.payload.is_empty() {
+                        continue;
+                    }
+
+                    let mut pkt = ffmpeg_next::Packet::copy(&rtp_packet.payload);
+
+                    if audio_decoder.send_packet(&mut pkt).is_ok() {
+                        let mut frame = frame::Audio::empty();
+                        while audio_decoder.receive_frame(&mut frame).is_ok() {
+                            decoded_audio_frames_tx.send(frame.clone()).await.unwrap();
+                        }
+                    }
+                }
+            }
+        }
+    });
+
+
+    let _video_decoder = tokio::spawn(async move {
         let mut has_keyframe = false;
         let mut h264pkt = H264Packet::default();
-        let mut event: SDL_Event = zeroed();
+        let mut video_track: Option<Arc<TrackRemote>> = None;
 
-        let mut video_track = None;
-        let mut audio_track = None;
+        while video_track.is_none() {
+            video_track = video_rx.recv().await;
+            tokio::time::sleep(Duration::from_secs(1)).await;
+        }
 
-        'running: loop {
-            while SDL_PollEvent(&mut event as *mut _) {
-                match event.r#type {
-                    0x100 => {
-                        let _ = exit_tx.send(()).await;
-                    },
-                    _evt_type => {
-                        // log::info!("Unhandled evt: {}", evt_type.0);
-                    }
-                }
+        log::warn!("Got video track!");
 
-            }
-
-            if let Ok(a_track) = audio_rx.try_recv() {
-                audio_track.replace(a_track);
-
-                log::info!("Got audio track...");
-            }
-
-            if let Ok(v_track) = video_rx.try_recv() {
-                video_track.replace(v_track);
-
-                log::info!("Got video track...");
-            }
-
-            if let Some(ref track) = audio_track {
+        if let Some(track) = video_track {
+            loop {
                 if let Ok((rtp_packet, _b)) = track.read_rtp().await {
-                    if do_decoding {
-                        if !rtp_packet.payload.is_empty() {
-                            let payload = rtp_packet.payload;
-                            if !got_audio {
-                                got_audio = true;
-                                log::info!("Got first audio frame");
-                                if !SDL_ResumeAudioStreamDevice(audiostream) {
-                                    log::error!("Failed to unpause audio stream");
-                                }
-                            }
-                            let mut pkt = ffmpeg_next::Packet::copy(&payload);
-            
-                            if audio_decoder.send_packet(&mut pkt).is_ok() {
-                                let mut frame = frame::Audio::empty();
-                                while audio_decoder.receive_frame(&mut frame).is_ok() {
-                                    if !SDL_PutAudioStreamData(
-                                        audiostream,
-                                        frame.data(0).as_ptr() as *mut _,
-                                        frame.data(0).len() as i32
-                                    ) {
-                                        log::error!("Failed to put data into audio stream");
-                                    }
-                                }
+                    if rtp_packet.payload.is_empty() {
+                        continue;
+                    }
+
+                    let payload = rtp_packet.payload;
+
+                    if !has_keyframe {
+                        has_keyframe = is_key_frame(&payload);
+                    }
+
+                    if !has_keyframe {
+                        continue
+                    }
+
+                    if let Ok(data) = h264pkt.depacketize(&payload) {
+                        let mut pkt = ffmpeg_next::Packet::copy(&data);
+
+                        if video_decoder.send_packet(&mut pkt).is_ok() {
+                            let mut frame = frame::Video::empty();
+                            while video_decoder.receive_frame(&mut frame).is_ok() {
+                                decoded_video_frames_tx.send(frame.clone()).await.unwrap();
                             }
                         }
                     }
                 }
             }
+        }
+    });
 
-            if let Some(ref track) = video_track {
-                if let Ok((rtp_packet, _b)) = track.read_rtp().await {
-                    if do_decoding {
-                        if !rtp_packet.payload.is_empty() {
-                            let payload = rtp_packet.payload;
-                            if !got_video {
-                                got_video = true;
-                                log::info!("Got first video frame");
-                            }
-            
-                            if !has_keyframe {
-                                has_keyframe = is_key_frame(&payload);
-                            }
-            
-                            if has_keyframe {
-                                if let Ok(data) = h264pkt.depacketize(&payload) {
-                                    let mut pkt = ffmpeg_next::Packet::copy(&data);
-            
-                                    if video_decoder.send_packet(&mut pkt).is_ok() {
-                                        let mut frame = frame::Video::empty();
-                                        while video_decoder.receive_frame(&mut frame).is_ok() {
-                                            SDL_UpdateYUVTexture(
-                                                texture,
-                                                ptr::null(),
-                                                frame.data(0).as_ptr(),
-                                                frame.plane_width(0) as i32,
-                                                frame.data(1).as_ptr(),
-                                                frame.plane_width(1) as i32,
-                                                frame.data(2).as_ptr(),
-                                                frame.plane_width(2) as i32
-                                            );
-                        
-                                            SDL_RenderTexture(renderer, texture, ptr::null(), ptr::null());
-                        
-                                            // Present the back buffer
-                                            SDL_RenderPresent(renderer);
-                                        }
-                                    }
-                                }
-                            }    
-                        }
-                    }
+    'running: loop {
+        while let Some(event) = event_pump.poll_event() {
+            match event {
+                Event::Quit{ timestamp: _} => {
+                    let _ = exit_tx.send(());
+                },
+                Event::KeyDown { keycode: kc, .. } => {
+                    log::info!("Keycode: {kc:?}");
+                },
+                _evt_type => {
+                    // log::info!("Unhandled evt: {}", evt_type.0);
                 }
-            }
-
-            if let Ok(_exit_signal) = exit_rx.try_recv() {
-                log::info!("Received exit signal, exiting loop");
-                break 'running;
             }
         }
 
-        SDL_DestroyRenderer(renderer);
-        SDL_DestroyWindow(window);
-        SDL_Quit();
+        while let Ok(frame) = decoded_audio_frames_rx.try_recv() {
+            if !audio_started {
+                audiostream.resume()?;
+                audio_started = true;
+            }
+
+            audiostream.put_data(frame.data(0))?;
+        }
+
+        while let Ok(frame) = decoded_video_frames_rx.try_recv() {
+            texture.update_yuv(
+                None,
+                frame.data(0),
+                frame.plane_width(0) as usize,
+                frame.data(1),
+                frame.plane_width(1) as usize,
+                frame.data(2),
+                frame.plane_width(2) as usize,
+            )?;
+
+            canvas.copy(&texture, None, None)?;
+            canvas.present();
+            //SDL_RenderTexture(renderer, texture, ptr::null(), ptr::null());
+            //SDL_RenderPresent(renderer);
+        }
+
+
+        if let Ok(_) = exit_rx.try_recv() {
+            log::info!("Received exit signal, exiting loop");
+            break 'running;
+        }
     }
 
     Ok(())
